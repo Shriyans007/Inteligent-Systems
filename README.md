@@ -4,6 +4,7 @@ COS30018 Intelligent Systems - Project Assignment Option B
 
 ## Team
 - Jaspreet Singh - 105342118
+- Zadeed Haque - 106382225
 
 ## Structure
 - `preprocessing/` - Task 1: image preprocessing

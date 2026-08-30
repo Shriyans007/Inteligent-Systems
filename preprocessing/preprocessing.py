@@ -38,6 +38,21 @@ def binarize_image(image: Image.Image, threshold: int = 128) -> Image.Image:
     return Image.fromarray(binary)
 
 
+def binarize_image_otsu(image: Image.Image) -> Image.Image:
+    """
+    Convert a grayscale image to pure black/white using Otsu's method.
+    Instead of a fixed cutoff, Otsu picks the threshold that best separates
+    the image's own pixel histogram into two groups (foreground/background),
+    so it adapts per image instead of assuming every image is lit the same way.
+    """
+    from skimage.filters import threshold_otsu
+
+    array = np.array(image)
+    thresh = threshold_otsu(array)
+    binary = np.where(array >= thresh, 255, 0).astype(np.uint8)
+    return Image.fromarray(binary)
+
+
 def to_normalized_array(image: Image.Image) -> np.ndarray:
     """Convert a grayscale image to a numpy array of floats in [0, 1], ready for a model."""
     array = np.array(image).astype(np.float32) / 255.0
@@ -48,16 +63,24 @@ def preprocess_pipeline(
     image: Image.Image,
     size: tuple = (28, 28),
     binarize: bool = False,
+    method: str = "fixed",
     threshold: int = 128,
 ) -> np.ndarray:
     """
     Full preprocessing pipeline: grayscale -> resize -> (optional binarize) -> normalize.
     Returns a numpy array ready to feed into a model.
+
+    method only matters when binarize=True:
+      "fixed" - binarize_image with a fixed threshold (default 128)
+      "otsu"  - binarize_image_otsu, threshold picked automatically per image
     """
     img = grayscale_image(image)
     img = resize_image(img, size)
     if binarize:
-        img = binarize_image(img, threshold)
+        if method == "otsu":
+            img = binarize_image_otsu(img)
+        else:
+            img = binarize_image(img, threshold)
     return to_normalized_array(img)
 
 

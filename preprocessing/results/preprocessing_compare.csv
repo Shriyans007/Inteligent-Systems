@@ -1,0 +1,4 @@
+method,accuracy_pct
+Grayscale only,92.8
+Fixed threshold (128),91.0
+Otsu threshold,91.2

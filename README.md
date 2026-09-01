@@ -1,18 +1,20 @@
 # Handwritten Number Recognition System (HNRS)
 
-COS30018 Intelligent Systems - Project Assignment Option B
+COS30018 Intelligent Systems - Project Assignment Option B.
 
 ## Team
-- Jaspreet Singh - 105342118
-- Zadeed Haque - 106382225
 
-## Structure
-- `preprocessing/` - Task 1: image preprocessing
-- `segmentation/` - Task 2: digit segmentation
-- `models/` - Task 3: ML models for digit recognition
-- `evaluation/` - Task 4: testing and evaluation
-- `gui/` - GUI for user input/output
-- `data/` - datasets (gitignored, not committed)
+- Jaspreet Singh - 105342118 (Person A: preprocessing, acquisition and evaluation)
+- Akhila (Person B: segmentation and integration)
+- Shriyans (Person C: CNN experiments, core GUI and research extension)
+- Zadeed Haque - 106382225 (Person D: alternative ML model and advanced GUI)
 
-## Setup
-(Will write soon)
+## Current components
+
+- `preprocessing/` - acquisition and preprocessing investigation
+- `shriyans_cnn/` - controlled MLP/CNN MNIST experiment, evaluation and inference
+- `gui/` - core image upload, preview and confidence-aware prediction interface
+- `extension/` - safe arithmetic-expression evaluator for the B + C extension
+- `tests/` - automated checks for preprocessing contracts and expression safety
+
+See [`docs/SHRIYANS_CONTRIBUTION.md`](docs/SHRIYANS_CONTRIBUTION.md) for setup, tutor-demonstration commands, evidence requirements and the segmentation integration contract.

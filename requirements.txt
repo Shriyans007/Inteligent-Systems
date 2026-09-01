@@ -1,0 +1,6 @@
+tensorflow>=2.16,<2.22
+numpy>=1.26,<3
+Pillow>=10.0
+scikit-learn>=1.4
+pytest>=8.0
+

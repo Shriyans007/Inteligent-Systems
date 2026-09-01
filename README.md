@@ -12,8 +12,9 @@ COS30018 Intelligent Systems - Project Assignment Option B.
 ## Current components
 
 - `preprocessing/` - acquisition and preprocessing investigation
-- `shriyans_cnn/` - controlled MLP/CNN MNIST experiment, evaluation and inference
-- `gui/` - core image upload, preview and confidence-aware prediction interface
+- `cnn_model/` - controlled MLP/CNN MNIST experiment, evaluation and inference
+- `frontend/` - responsive React/Vite image upload and confidence-aware prediction interface
+- `api/` - FastAPI bridge between the React interface and trained CNN
 - `extension/` - safe arithmetic-expression evaluator for the B + C extension
 - `tests/` - automated checks for preprocessing contracts and expression safety
 

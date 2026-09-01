@@ -1,7 +1,7 @@
 import numpy as np
 from PIL import Image, ImageDraw
 
-from shriyans_cnn.image_utils import prepare_digit_image
+from cnn_model.image_utils import prepare_digit_image
 
 
 def test_prepare_digit_image_has_expected_shape_and_range():
@@ -18,4 +18,3 @@ def test_blank_image_is_rejected():
     import pytest
     with pytest.raises(ValueError, match="visible digit"):
         prepare_digit_image(Image.new("L", (28, 28), 255))
-

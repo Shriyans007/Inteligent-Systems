@@ -36,10 +36,8 @@ def build_cnn(num_classes: int = 10):
         [
             keras.layers.Input((28, 28, 1)),
             keras.layers.Conv2D(32, 3, padding="same", activation="relu"),
-            keras.layers.BatchNormalization(),
             keras.layers.MaxPooling2D(),
             keras.layers.Conv2D(64, 3, padding="same", activation="relu"),
-            keras.layers.BatchNormalization(),
             keras.layers.MaxPooling2D(),
             keras.layers.Dropout(0.25),
             keras.layers.Flatten(),
@@ -60,4 +58,3 @@ def compile_model(model, learning_rate: float = 1e-3):
         metrics=["accuracy"],
     )
     return model
-

@@ -3,7 +3,7 @@
 ## Implemented scope
 
 - Reproducible MNIST experiment comparing a dense MLP baseline with the selected CNN.
-- CNN architecture with convolution, batch normalisation, pooling and dropout.
+- CNN architecture with two convolution layers, pooling and dropout.
 - Early stopping, learning-rate reduction, fixed seed and identical data for a fair comparison.
 - Evaluation outputs: overall/per-class accuracy, loss, confusion matrix and misclassified cases.
 - Shared upload preprocessing that converts real images to the 28 x 28 MNIST convention.

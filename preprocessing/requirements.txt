@@ -1,4 +1,0 @@
-numpy
-Pillow
-scikit-learn
-scikit-image

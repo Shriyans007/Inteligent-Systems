@@ -10,8 +10,8 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 
-from cnn_model.image_utils import prepare_digit_image
 from cnn_model.models import _keras
+from preprocessing import prepare_mnist_digit
 
 MODEL_PATH = Path(os.getenv("HNRS_MODEL_PATH", "artifacts/cnn_mnist.keras"))
 
@@ -62,7 +62,7 @@ async def predict(files: list[UploadFile] = File(...)) -> dict:
             if len(content) > 5 * 1024 * 1024:
                 raise HTTPException(status_code=413, detail=f"{upload.filename} exceeds the 5 MB limit.")
             image = Image.open(io.BytesIO(content))
-            probabilities = model.predict(prepare_digit_image(image), verbose=0)[0]
+            probabilities = model.predict(prepare_mnist_digit(image), verbose=0)[0]
             digit = int(probabilities.argmax())
             predictions.append(
                 {

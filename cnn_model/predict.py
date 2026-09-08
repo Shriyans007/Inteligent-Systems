@@ -6,8 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
-from .image_utils import prepare_digit_image
 from .models import _keras
+from preprocessing import prepare_mnist_digit
 
 
 class DigitPredictor:
@@ -18,7 +18,6 @@ class DigitPredictor:
         self.model = _keras().models.load_model(path)
 
     def predict(self, image_path: str | Path) -> tuple[int, float, np.ndarray]:
-        probabilities = self.model.predict(prepare_digit_image(str(image_path)), verbose=0)[0]
+        probabilities = self.model.predict(prepare_mnist_digit(str(image_path)), verbose=0)[0]
         digit = int(probabilities.argmax())
         return digit, float(probabilities[digit]), probabilities
-

@@ -6,7 +6,7 @@
 - CNN architecture with two convolution layers, pooling and dropout.
 - Early stopping, learning-rate reduction, fixed seed and identical data for a fair comparison.
 - Evaluation outputs: overall/per-class accuracy, loss, confusion matrix and misclassified cases.
-- Shared upload preprocessing that converts real images to the 28 x 28 MNIST convention.
+- Integrated Person A's official preprocessing pipeline into the CNN and API input path.
 - Responsive React.js GUI for image upload, preview, multi-digit display and confidence feedback.
 - FastAPI prediction service connecting the browser interface to the trained CNN.
 - Safe arithmetic evaluator for the Person B + C extension; it handles precedence and brackets without `eval()`.
@@ -14,7 +14,7 @@
 
 ## How this meets the marking scheme
 
-The assignment allocates 14 marks to investigating and comparing ML methods. The experiment controls the dataset split, optimiser, batch size and stopping rule, then saves machine-readable evidence instead of relying on one reported accuracy. The GUI covers Shriyans's core interface task and exposes confidence, including the weakest digit, so uncertain results are visible. The model and UI are separated behind `DigitPredictor`, allowing Person B's segmentation output to use the same prediction component during integration.
+The assignment allocates 14 marks to investigating and comparing ML methods. The experiment controls the dataset split, optimiser, batch size and stopping rule, then saves machine-readable evidence instead of relying on one reported accuracy. The GUI covers Shriyans's core interface task and exposes confidence, including the weakest digit, so uncertain results are visible. The API now calls Person A's `preprocess_pipeline` through `prepare_mnist_digit`, giving the team one preprocessing implementation instead of two competing versions.
 
 ## Commands used for tutor demonstration
 
@@ -52,4 +52,4 @@ Do not invent results. Final accuracy and timing depend on the hardware and must
 
 ## Integration contract for Person B
 
-Person B should pass each segmented digit crop to the FastAPI prediction layer in left-to-right order. The current React GUI accepts multiple pre-segmented image files as an interim path. During Phase 3, the API can call Person B's segmentation function before `prepare_digit_image`; the React interface does not need to be redesigned.
+Person B should pass each segmented digit crop to `prepare_mnist_digit` from the `preprocessing` package in left-to-right order. That function crops and centres each digit, then calls Person A's selected `preprocess_pipeline(..., binarize=False)` before CNN prediction. The React GUI currently accepts multiple pre-segmented files as an interim path. During Phase 3, the API can call Person B's segmentation function first without redesigning the interface.

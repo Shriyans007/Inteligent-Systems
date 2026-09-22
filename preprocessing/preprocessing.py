@@ -108,7 +108,8 @@ if __name__ == "__main__":
 
     original = load_image(sys.argv[1])
     result = preprocess_pipeline(original, size=(28, 28), binarize=False)
+
     print(f"Loaded image: {sys.argv[1]}")
-    print(f"Original size: {img.size}, mode: {img.mode}")
-    print(f"Processed array shape: {processed.shape}, dtype: {processed.dtype}")
-    print(f"Value range: [{processed.min():.3f}, {processed.max():.3f}]")
+    print(f"Original size: {original.size}, mode: {original.mode}")
+    print(f"Processed array shape: {result.shape}, dtype: {result.dtype}")
+    print(f"Value range: [{result.min():.3f}, {result.max():.3f}]")

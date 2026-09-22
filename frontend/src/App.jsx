@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const allowedTypes = ["image/png", "image/jpeg", "image/bmp", "image/webp"];
 
@@ -8,6 +8,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [modelReady, setModelReady] = useState(null);
+  const fileInputRef = useRef(null);
   const previews = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
 
   useEffect(() => {
@@ -49,12 +50,18 @@ export default function App() {
     }
   }
 
+  function reset() {
+    setFiles([]);
+    setResult(null);
+    setError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   return (
     <main>
       <header className="hero">
         <p className="eyebrow">COS30018 · INTELLIGENT SYSTEMS</p>
         <h1>Handwritten Number Recognition</h1>
-        <p>Upload digits, run the trained CNN and inspect confidence before accepting a prediction.</p>
         <span className={`status ${modelReady ? "ready" : "waiting"}`}>
           {modelReady === null ? "Checking model…" : modelReady ? "Model ready" : "Model not trained"}
         </span>
@@ -62,11 +69,10 @@ export default function App() {
 
       <section className="workspace">
         <article className="panel">
-          <div className="step">01</div>
           <h2>Select digit images</h2>
-          <p className="hint">For a multi-digit number, upload pre-segmented images from left to right.</p>
+          <p className="hint">Upload one handwritten number image, or several digit images from left to right.</p>
           <label className="dropzone">
-            <input type="file" multiple accept="image/png,image/jpeg,image/bmp,image/webp" onChange={chooseFiles} />
+            <input ref={fileInputRef} type="file" multiple accept="image/png,image/jpeg,image/bmp,image/webp" onChange={chooseFiles} />
             <strong>Choose image files</strong>
             <span>PNG, JPG, BMP or WebP · maximum 5 MB each</span>
           </label>
@@ -81,7 +87,6 @@ export default function App() {
         </article>
 
         <article className="panel result-panel">
-          <div className="step">02</div>
           <h2>Recognition result</h2>
           {!result ? (
             <div className="empty-result">Your prediction will appear here.</div>
@@ -101,9 +106,14 @@ export default function App() {
             </div>
           )}
           {error && <p className="error" role="alert">{error}</p>}
-          <button onClick={recognise} disabled={loading || !files.length}>
-            {loading ? "Recognising…" : "Recognise number"}
-          </button>
+          <div className="result-actions">
+            <button onClick={recognise} disabled={loading || !files.length}>
+              {loading ? "Recognising…" : "Recognise number"}
+            </button>
+            <button className="secondary-button" onClick={reset} disabled={loading || (!files.length && !result && !error)}>
+              Reset
+            </button>
+          </div>
         </article>
       </section>
     </main>

@@ -1,7 +1,7 @@
 """
 Tests for the segmentation module, verified against:
   - preprocessing.image_acquisition.build_number_from_digits() (real tile-composite format)
-  - cnn_model.image_utils.prepare_digit_image() (real CNN input prep)
+  - preprocessing.prepare_mnist_digit() (real CNN input prep)
 
 These are integration-style tests deliberately built against the team's real
 functions rather than mocks, since the tile-composite pixel format has real

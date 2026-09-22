@@ -8,10 +8,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+import numpy as np
 from PIL import Image
 
 from cnn_model.models import _keras
 from preprocessing import prepare_mnist_digit
+from segmentation import crops_to_model_input, segment
 
 MODEL_PATH = Path(os.getenv("HNRS_MODEL_PATH", "artifacts/cnn_mnist.keras"))
 
@@ -40,6 +42,14 @@ def get_model():
     return _model
 
 
+@app.on_event("startup")
+def warm_up_model() -> None:
+    """Load the trained CNN when the API starts so the first request is faster."""
+    if MODEL_PATH.exists():
+        model = get_model()
+        model.predict(np.zeros((1, 28, 28, 1), dtype=np.float32), verbose=0)
+
+
 @app.get("/api/health")
 def health() -> dict[str, str | bool]:
     """Report API availability separately from model availability."""
@@ -52,22 +62,37 @@ async def predict(files: list[UploadFile] = File(...)) -> dict:
     if not 1 <= len(files) <= 30:
         raise HTTPException(status_code=400, detail="Upload between 1 and 30 digit images.")
 
-    predictions = []
     try:
         model = get_model()
-        for position, upload in enumerate(files):
+        prepared_images = []
+        filenames = []
+        for upload in files:
             if upload.content_type not in {"image/png", "image/jpeg", "image/bmp", "image/webp"}:
                 raise HTTPException(status_code=415, detail=f"{upload.filename} is not a supported image.")
             content = await upload.read()
             if len(content) > 5 * 1024 * 1024:
                 raise HTTPException(status_code=413, detail=f"{upload.filename} exceeds the 5 MB limit.")
             image = Image.open(io.BytesIO(content))
-            probabilities = model.predict(prepare_mnist_digit(image), verbose=0)[0]
+            crops = segment(image)
+            if crops:
+                prepared_images.extend(crops_to_model_input(crops))
+                filenames.extend(f"{upload.filename} #{crop.index + 1}" for crop in crops)
+            else:
+                # Some MNIST-style images have a dark full-image background,
+                # so segmentation may correctly find no separate dark region.
+                prepared_images.append(prepare_mnist_digit(image))
+                filenames.append(upload.filename)
+
+        # Run one batch prediction rather than calling TensorFlow once per file.
+        batch = np.concatenate(prepared_images, axis=0)
+        batch_probabilities = model.predict(batch, verbose=0)
+        predictions = []
+        for position, (filename, probabilities) in enumerate(zip(filenames, batch_probabilities)):
             digit = int(probabilities.argmax())
             predictions.append(
                 {
                     "position": position,
-                    "filename": upload.filename,
+                    "filename": filename,
                     "digit": digit,
                     "confidence": float(probabilities[digit]),
                     "probabilities": [float(value) for value in probabilities],

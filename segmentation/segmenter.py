@@ -22,7 +22,7 @@ from PIL import Image
 class CharacterCrop:
     """A single segmented character. `image` is the RAW (non-binarized)
     crop from the original image -- deliberately unprocessed, so
-    cnn_model.image_utils.prepare_digit_image() has full pixel information
+    preprocessing.prepare_mnist_digit() has full pixel information
     to work with, same as it would for a directly-uploaded single digit."""
     image: np.ndarray                 # raw grayscale crop, 0-255
     bbox: Tuple[int, int, int, int]   # (x, y, w, h) in the original image
@@ -127,7 +127,7 @@ def segment(
 
     Returns ordered (left-to-right) CharacterCrop objects with RAW pixel
     data, ready to be passed straight into
-    cnn_model.image_utils.prepare_digit_image().
+    preprocessing.prepare_mnist_digit().
     """
     gray = _to_grayscale_array(image)
     binary = _binary_for_detection(gray)
@@ -155,20 +155,14 @@ def segment(
 
 def crops_to_model_input(crops: List[CharacterCrop]) -> List[np.ndarray]:
     """
-    Convert each raw crop to the (1,28,28,1) float32 tensor the CNN expects,
-    using the team's own cnn_model.image_utils.prepare_digit_image() so
-    there's exactly one implementation of that logic in the codebase.
-    Falls back to preprocessing.prepare_mnist_digit() if cnn_model isn't
-    importable in this environment (e.g. running segmentation tests in
-    isolation), since the two functions are equivalent.
+    Convert each raw crop to the (1,28,28,1) float32 tensor the CNN expects.
+    This uses the shared preprocessing module so the full system has only one
+    implementation of the image preparation logic.
     """
-    try:
-        from cnn_model.image_utils import prepare_digit_image as _prepare
-    except ImportError:
-        from preprocessing.preprocessing import prepare_mnist_digit as _prepare
+    from preprocessing import prepare_mnist_digit
 
     tensors = []
     for c in crops:
         pil_crop = Image.fromarray(c.image)
-        tensors.append(_prepare(pil_crop))
+        tensors.append(prepare_mnist_digit(pil_crop))
     return tensors

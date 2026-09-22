@@ -12,7 +12,6 @@ h1 { max-width: 760px; margin: 0; font-size: clamp(2.2rem, 5vw, 4.2rem); line-he
 .waiting { background: #ffe1a6; color: #704600; }
 .workspace { display: grid; grid-template-columns: 1.15fr .85fr; gap: 22px; max-width: 1120px; margin: -26px auto 0; padding: 0 24px 56px; }
 .panel { position: relative; min-height: 440px; padding: 32px; border: 1px solid #dce3ee; border-radius: 18px; background: white; box-shadow: 0 14px 38px #19365a18; }
-.step { position: absolute; top: 26px; right: 28px; color: #bfd0e4; font-size: 1.5rem; font-weight: 900; }
 h2 { margin: 0 0 8px; font-size: 1.45rem; }
 .hint { margin: 0 0 22px; color: #66738a; }
 .dropzone { display: grid; place-items: center; min-height: 150px; padding: 22px; border: 2px dashed #8aadd4; border-radius: 14px; background: #f7faff; cursor: pointer; text-align: center; }
@@ -39,5 +38,8 @@ dd { margin: 3px 0 0; font-weight: 800; }
 button { width: 100%; padding: 14px; border: 0; border-radius: 10px; color: white; background: #1d63a8; font-weight: 800; cursor: pointer; }
 button:hover:not(:disabled) { background: #154e86; }
 button:disabled { cursor: not-allowed; opacity: .48; }
+.result-actions { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+.secondary-button { width: auto; padding-inline: 22px; color: #1d4e89; border: 1px solid #9db6d2; background: white; }
+.secondary-button:hover:not(:disabled) { color: white; background: #1d4e89; }
 .error { padding: 10px; border-radius: 8px; color: #8c2330; background: #ffedf0; font-size: .85rem; }
-@media (max-width: 780px) { .workspace { grid-template-columns: 1fr; margin-top: 0; padding-top: 22px; } .panel { min-height: 390px; } }
+@media (max-width: 780px) { .workspace { grid-template-columns: 1fr; margin-top: 0; padding-top: 22px; } .panel { min-height: 390px; } .result-actions { grid-template-columns: 1fr; } .secondary-button { width: 100%; } }

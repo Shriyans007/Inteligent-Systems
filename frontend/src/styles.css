@@ -3,7 +3,7 @@
 body { margin: 0; min-width: 320px; }
 button, input { font: inherit; }
 main { min-height: 100vh; }
-.hero { padding: 56px max(24px, calc((100vw - 1120px) / 2)); color: white; background: linear-gradient(120deg, #12233f, #1d4e89 60%, #2672c9); }
+.hero { padding: 56px max(24px, calc((100vw - 1120px) / 2)); color: white; background: #1d4e89; }
 .eyebrow { margin: 0 0 12px; color: #a9d4ff; font-size: .75rem; font-weight: 800; letter-spacing: .16em; }
 h1 { max-width: 760px; margin: 0; font-size: clamp(2.2rem, 5vw, 4.2rem); line-height: 1.02; }
 .hero > p:not(.eyebrow) { max-width: 660px; color: #dcecff; font-size: 1.08rem; }

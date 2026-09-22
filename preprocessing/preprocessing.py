@@ -61,6 +61,29 @@ def preprocess_pipeline(
     return to_normalized_array(processed)
 
 
+def centre_digit_by_mass(image: Image.Image) -> Image.Image:
+    """Move the digit's weighted centre to the middle of a 28x28 image.
+
+    MNIST digits are centred using the ink in the image. This is more reliable
+    than centring only the bounding box, especially for digits such as 9 that
+    can have a long, thin tail.
+    """
+    pixels = np.asarray(image, dtype=np.float32)
+    total_ink = float(pixels.sum())
+    if total_ink == 0:
+        return image
+
+    y_positions, x_positions = np.indices(pixels.shape)
+    centre_x = float((x_positions * pixels).sum() / total_ink)
+    centre_y = float((y_positions * pixels).sum() / total_ink)
+    shift_x = round((image.width - 1) / 2 - centre_x)
+    shift_y = round((image.height - 1) / 2 - centre_y)
+
+    shifted = Image.new("L", image.size, 0)
+    shifted.paste(image, (shift_x, shift_y))
+    return shifted
+
+
 def prepare_mnist_digit(source: str | Image.Image) -> np.ndarray:
     """Prepare an uploaded or segmented digit for the trained CNN.
 
@@ -95,6 +118,7 @@ def prepare_mnist_digit(source: str | Image.Image) -> np.ndarray:
 
     centred = Image.new("L", (28, 28), 0)
     centred.paste(resized, ((28 - resized.width) // 2, (28 - resized.height) // 2))
+    centred = centre_digit_by_mass(centred)
     processed = preprocess_pipeline(centred, size=(28, 28), binarize=False)
     return processed[None, ..., None]
 
@@ -112,4 +136,3 @@ if __name__ == "__main__":
     print(f"Original size: {original.size}, mode: {original.mode}")
     print(f"Processed array shape: {result.shape}, dtype: {result.dtype}")
     print(f"Value range: [{result.min():.3f}, {result.max():.3f}]")
-

@@ -3,7 +3,6 @@
 COS30018 Intelligent Systems - Project Assignment Option B.
 
 ## Team
-
 - Jaspreet Singh - 105342118 (Person A: preprocessing, acquisition and evaluation)
 - Akhila (Person B: segmentation and integration)
 - Shriyans (Person C: CNN experiments, core GUI and research extension)

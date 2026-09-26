@@ -24,50 +24,64 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
+def load_mnist(quick: bool, seed: int):
+    """Use the same ordered MNIST split and scaling for all four classifiers."""
     keras = _keras()
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    keras.utils.set_random_seed(args.seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    keras.utils.set_random_seed(seed)
     try:
         keras.config.enable_op_determinism()
     except AttributeError:
         pass
 
     (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
-    if args.quick:
+    if quick:
         x_train, y_train = x_train[:10000], y_train[:10000]
         x_test, y_test = x_test[:2000], y_test[:2000]
     x_train = x_train.astype("float32")[..., None] / 255.0
     x_test = x_test.astype("float32")[..., None] / 255.0
+    return x_train, y_train, x_test, y_test
+
+
+def train_one(name, builder, data, args):
+    """Train and evaluate with the existing split, optimizer and callbacks."""
+    keras = _keras()
+    x_train, y_train, x_test, y_test = data
+    model = compile_model(builder())
+    callbacks = [
+        keras.callbacks.EarlyStopping(monitor="val_loss", patience=2, restore_best_weights=True),
+        keras.callbacks.ReduceLROnPlateau(monitor="val_loss", patience=1, factor=0.5),
+    ]
+    started = time.perf_counter()
+    history = model.fit(
+        x_train, y_train, validation_split=0.1, epochs=args.epochs,
+        batch_size=args.batch_size, callbacks=callbacks, verbose=2,
+    )
+    loss, accuracy = model.evaluate(x_test, y_test, verbose=0)
+    elapsed = time.perf_counter() - started
+    predictions = model.predict(x_test, verbose=0).argmax(axis=1)
+    per_class = {
+        str(digit): float((predictions[y_test == digit] == digit).mean())
+        for digit in range(10)
+    }
+    record = {
+        "model": name,
+        "test_accuracy": float(accuracy), "test_loss": float(loss),
+        "training_seconds": round(elapsed, 2), "parameters": int(model.count_params()),
+        "epochs_completed": len(history.history["loss"]), "per_class_accuracy": per_class,
+    }
+    return model, history, record
+
+
+def main() -> None:
+    args = parse_args()
+    data = load_mnist(args.quick, args.seed)
     args.output.mkdir(parents=True, exist_ok=True)
 
     results = []
     for name, builder in (("MLP baseline", build_mlp), ("CNN selected", build_cnn)):
-        model = compile_model(builder())
-        callbacks = [
-            keras.callbacks.EarlyStopping(monitor="val_loss", patience=2, restore_best_weights=True),
-            keras.callbacks.ReduceLROnPlateau(monitor="val_loss", patience=1, factor=0.5),
-        ]
-        started = time.perf_counter()
-        history = model.fit(
-            x_train, y_train, validation_split=0.1, epochs=args.epochs,
-            batch_size=args.batch_size, callbacks=callbacks, verbose=2,
-        )
-        loss, accuracy = model.evaluate(x_test, y_test, verbose=0)
-        elapsed = time.perf_counter() - started
-        predictions = model.predict(x_test, verbose=0).argmax(axis=1)
-        per_class = {
-            str(digit): float((predictions[y_test == digit] == digit).mean())
-            for digit in range(10)
-        }
-        record = {
-            "model": name,
-            "test_accuracy": float(accuracy), "test_loss": float(loss),
-            "training_seconds": round(elapsed, 2), "parameters": int(model.count_params()),
-            "epochs_completed": len(history.history["loss"]), "per_class_accuracy": per_class,
-        }
+        model, history, record = train_one(name, builder, data, args)
         results.append(record)
         model.save(args.output / ("cnn_mnist.keras" if name.startswith("CNN") else "mlp_mnist.keras"))
         (args.output / f"{model.name}_history.json").write_text(
@@ -86,4 +100,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

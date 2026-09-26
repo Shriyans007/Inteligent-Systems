@@ -1,5 +1,5 @@
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 from preprocessing import centre_digit_by_mass, prepare_mnist_digit, preprocess_pipeline
 
@@ -40,3 +40,18 @@ def test_digit_is_centred_using_its_ink():
 
     assert abs(centre_x - 13.5) <= 0.6
     assert abs(centre_y - 13.5) <= 0.75
+
+
+def test_bold_nine_uses_background_not_crop_average():
+    image = Image.new("L", (100, 100), 255)
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((30, 20, 65, 55), outline=0, width=18)
+    draw.line((64, 40, 48, 78), fill=0, width=18)
+    # The dark ink covers more than half the tight crop after segmentation.
+    from segmentation import segment, crops_to_model_input
+    light_crop = segment(image)
+    dark_crop = segment(ImageOps.invert(image))
+    assert len(light_crop) == len(dark_crop) == 1
+    assert light_crop[0].image.mean() < 127
+    np.testing.assert_allclose(crops_to_model_input(light_crop)[0],
+                               crops_to_model_input(dark_crop)[0])

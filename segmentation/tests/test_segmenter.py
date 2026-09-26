@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import numpy as np
 import cv2
 from PIL import Image
+from PIL import ImageOps
 
 from segmentation import segment, crops_to_model_input
 from preprocessing.image_acquisition import build_number_from_digits
@@ -81,6 +82,20 @@ def test_empty_canvas_returns_no_crops():
     blank = np.full((28, 100), 255, dtype=np.uint8)
     crops = segment(blank)
     assert crops == []
+
+
+def test_real_nine_keeps_the_whole_digit_on_both_backgrounds():
+    """The black hole within 9 must not be mistaken for the digit itself."""
+    from pathlib import Path
+    from preprocessing import prepare_mnist_digit
+
+    source = Path(__file__).resolve().parents[2] / "preprocessing/sample_digits/digit_4_label9.png"
+    dark = Image.open(source).convert("L")
+    for image in (dark, ImageOps.invert(dark)):
+        crops = segment(image)
+        assert len(crops) == 1
+        assert crops[0].bbox[2] >= 12 and crops[0].bbox[3] >= 18
+        np.testing.assert_allclose(crops_to_model_input(crops)[0], prepare_mnist_digit(image))
 
 
 if __name__ == "__main__":

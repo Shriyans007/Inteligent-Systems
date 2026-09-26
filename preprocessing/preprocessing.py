@@ -96,9 +96,11 @@ def prepare_mnist_digit(source: str | Image.Image) -> np.ndarray:
     grayscale = grayscale_image(image)
     pixels = np.asarray(grayscale, dtype=np.uint8)
 
-    # MNIST has a bright digit on a dark background. Most uploaded drawings
-    # have the opposite format, so invert them when the background is bright.
-    if float(pixels.mean()) > 127:
+    # Inspect the border rather than the whole crop: a thick handwritten 9
+    # can occupy most of a tight crop and make its average look dark even
+    # when the page behind it is white.
+    border = np.concatenate((pixels[0], pixels[-1], pixels[:, 0], pixels[:, -1]))
+    if float(np.median(border)) > 127:
         pixels = 255 - pixels
 
     mask = pixels > max(20, int(pixels.max()) * 0.15)

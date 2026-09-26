@@ -45,16 +45,19 @@ def _binary_for_detection(gray: np.ndarray) -> np.ndarray:
     Binarize purely for FINDING character regions -- never used as the
     returned crop itself.
 
-    Foreground = darker-than-threshold pixels, always. This matches both
-    expected inputs: a natural photo (dark ink on light paper) and the
-    tile-composite format from build_number_from_digits() (dark
-    MNIST-style tile blocks on a white canvas). THRESH_BINARY_INV does
-    this directly, so there's no need to guess the polarity from the
-    overall pixel mean -- that heuristic breaks on this dataset because a
-    few large dark tiles can outweigh the (visually dominant) white canvas
-    in raw pixel count even though the canvas is still the background.
+    Detect the canvas background from its border. Photos and tile composites
+    have a light outer border, whereas MNIST-style single digits can have a
+    dark outer border and bright strokes. Tiled inputs can have dark pixels
+    along most of the outer edge; full-height light gaps reveal their canvas.
+    The whole-image mean is unsuitable because dark tiles can cover most of it.
     """
-    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    border = np.concatenate((gray[0], gray[-1], gray[:, 0], gray[:, -1]))
+    # Composite tiles can cover the top and bottom edges, but their full-
+    # height white gap columns reveal the light canvas between tiles.
+    light_gaps = gray.shape[1] > gray.shape[0] and np.any(np.min(gray, axis=0) > 230)
+    dark_background = np.median(border) < 128 and not light_gaps
+    foreground = cv2.THRESH_BINARY if dark_background else cv2.THRESH_BINARY_INV
+    _, binary = cv2.threshold(gray, 0, 255, foreground + cv2.THRESH_OTSU)
     return binary
 
 

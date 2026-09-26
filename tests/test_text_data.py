@@ -34,10 +34,21 @@ def test_iam_writer_split_and_word_aspect(tmp_path):
         identifier = f'a0{i}-000u-00-00'
         folder = root/'words'/f'a0{i}'/f'a0{i}-000u'
         folder.mkdir(parents=True)
-        Image.new('L', (50, 20), 255).save(folder/f'{identifier}.png')
+        sample = Image.new('L', (50, 20), 255)
+        ImageDraw.Draw(sample).line((4, 4, 42, 15), fill=0, width=2)
+        sample.save(folder/f'{identifier}.png')
         records.append(f'{identifier} ok 0 0 0 0 0 AT Test{i}')
     (root/'ascii'/'words.txt').write_text('\n'.join(records))
-    parts = split_writers(read_samples(root))
+    blank_id = 'a00-000u-00-01'
+    blank_path = root/'words'/'a00'/'a00-000u'/f'{blank_id}.png'
+    Image.new('L', (50, 20), 255).save(blank_path)
+    corrupt_id = 'a00-000u-00-02'
+    (blank_path.parent/f'{corrupt_id}.png').write_bytes(b'not a PNG')
+    with (root/'ascii'/'words.txt').open('a') as labels:
+        labels.write(f'\n{blank_id} ok 0 0 0 0 0 AT Empty')
+        labels.write(f'\n{corrupt_id} ok 0 0 0 0 0 AT Broken')
+    assert len(read_samples(root)) == 7
+    parts = split_writers(read_samples(root, validate_images=True))
     assert sum(map(len, parts)) == 5
     assert len(set(p[2] for group in parts for p in group)) == 5
     image = Image.new('L', (120, 40), 255)

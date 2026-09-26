@@ -11,7 +11,7 @@ from cnn_model.models import _keras
 from .common import HEIGHT, WIDTH, WORD_MODEL, WORD_VOCAB, prepare_word
 
 
-def read_samples(root):
+def read_samples(root, validate_images=False):
     labels = root / 'ascii' / 'words.txt'
     if not labels.is_file():
         raise FileNotFoundError(f'IAM labels missing: {labels}. Extract ascii.tgz inside {root}.')
@@ -44,6 +44,21 @@ def read_samples(root):
             continue
         if transcription and transcription != '#': samples.append((path, transcription, writers[form]))
     if missing: print(f'Skipped {missing} word entries with missing PNG images.')
+    if validate_images:
+        valid, invalid = [], []
+        for path, transcription, writer in samples:
+            try:
+                with Image.open(path) as image:
+                    prepare_word(image)
+            except (OSError, ValueError) as exc:
+                invalid.append((path, str(exc)))
+            else:
+                valid.append((path, transcription, writer))
+        samples = valid
+        if invalid:
+            print(f'Skipped {len(invalid)} blank or unreadable IAM word images.')
+            for path, reason in invalid[:5]:
+                print(f'  {path}: {reason}')
     if not samples: raise ValueError(f'No usable IAM word images found under {words}.')
     return samples
 
@@ -157,7 +172,7 @@ def main():
         vocab = json.loads((output/WORD_VOCAB.name).read_text())
         evaluate(_keras().models.load_model(model_path), samples, vocab, output, 'examples')
         return
-    samples = read_samples(args.data)
+    samples = read_samples(args.data, validate_images=True)
     train, valid, test = split_writers(samples)
     vocab = sorted({char for _, label, _ in samples for char in label})  # fixed IAM character inventory; no images or gradients from held-out writers
     if args.action == 'check':

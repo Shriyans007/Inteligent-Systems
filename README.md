@@ -139,7 +139,7 @@ data/iam/words/<section>/<form>/<word-id>.png
 
 `forms.txt` comes from IAM `ascii.tgz`. It maps forms to writers. The loader
 uses that mapping to keep writers separate in an 80/10/10 approximate split
-with seed 42, then skips IAM segmentation errors and missing PNGs. The split
+with seed 42, then skips IAM segmentation errors, missing PNGs, blank images and unreadable images. The initial image check may take a few minutes; it prints how many files were skipped before training. The split
 is deterministic. The IAM character inventory is fixed from the corpus labels;
 only training writer images update model weights, and validation writers select
 an epoch. The held-out test writers are used for final metrics. This split

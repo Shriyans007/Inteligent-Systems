@@ -1,22 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const allowedTypes = ["image/png", "image/jpeg", "image/bmp", "image/webp"];
+const fallbackModels = [{ key: "cnn", label: "Shallow CNN", available: false }];
 
 export default function App() {
   const [files, setFiles] = useState([]);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [modelReady, setModelReady] = useState(null);
+  const [models, setModels] = useState(fallbackModels);
+  const [selectedModel, setSelectedModel] = useState("cnn");
+  const [modelsLoaded, setModelsLoaded] = useState(false);
   const fileInputRef = useRef(null);
   const previews = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
 
   useEffect(() => {
-    fetch("/api/health")
+    fetch("/api/models")
       .then((response) => response.json())
-      .then((data) => setModelReady(data.model_ready))
-      .catch(() => setModelReady(false));
+      .then((data) => {
+        setModels(data.models);
+        const preferred = data.models.find((item) => item.key === data.default_model && item.available);
+        setSelectedModel((preferred ?? data.models.find((item) => item.available))?.key ?? data.default_model);
+        setModelsLoaded(true);
+      })
+      .catch(() => { setModelsLoaded(true); setError("Could not check the available models. Is the backend running?"); });
   }, []);
+
+  const modelReady = models.some((item) => item.key === selectedModel && item.available);
 
   useEffect(() => () => previews.forEach(URL.revokeObjectURL), [previews]);
 
@@ -38,6 +48,7 @@ export default function App() {
     setError("");
     const body = new FormData();
     files.forEach((file) => body.append("files", file));
+    body.append("model", selectedModel);
     try {
       const response = await fetch("/api/predict", { method: "POST", body });
       const data = await response.json();
@@ -63,7 +74,7 @@ export default function App() {
         <p className="eyebrow">COS30018 · INTELLIGENT SYSTEMS</p>
         <h1>Handwritten Number Recognition</h1>
         <span className={`status ${modelReady ? "ready" : "waiting"}`}>
-          {modelReady === null ? "Checking model…" : modelReady ? "Model ready" : "Model not trained"}
+          {!modelsLoaded ? "Checking models…" : modelReady ? "Model ready" : "Model not trained"}
         </span>
       </header>
 
@@ -88,10 +99,25 @@ export default function App() {
 
         <article className="panel result-panel">
           <h2>Recognition result</h2>
+          <label className="model-selector" htmlFor="model-choice">
+            <span>Select model</span>
+            <select id="model-choice" value={selectedModel} disabled={loading} onChange={(event) => {
+              setSelectedModel(event.target.value);
+              setResult(null);
+              setError("");
+            }}>
+              {models.map((item) => (
+                <option key={item.key} value={item.key} disabled={!item.available}>
+                  {item.label}{item.available ? "" : " (not trained)"}
+                </option>
+              ))}
+            </select>
+          </label>
           {!result ? (
             <div className="empty-result">Your prediction will appear here.</div>
           ) : (
             <div className="result">
+              <p>Model: {result.model_label}</p>
               <p>Predicted number</p>
               <strong>{result.number}</strong>
               <dl>
@@ -107,7 +133,7 @@ export default function App() {
           )}
           {error && <p className="error" role="alert">{error}</p>}
           <div className="result-actions">
-            <button onClick={recognise} disabled={loading || !files.length}>
+            <button onClick={recognise} disabled={loading || !files.length || !modelReady}>
               {loading ? "Recognising…" : "Recognise number"}
             </button>
             <button className="secondary-button" onClick={reset} disabled={loading || (!files.length && !result && !error)}>

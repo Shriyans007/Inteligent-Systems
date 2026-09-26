@@ -80,6 +80,18 @@ images. Save the actual predictions, expected labels and errors as evidence;
 MNIST accuracy alone does not establish system performance on uploaded images.
 The API continues to load the trained shallow CNN by default.
 
+### Choosing a trained model in the GUI
+
+After running the backend and React frontend, use **Select model** above the
+recognition result to compare saved MLP, shallow CNN, LeNet-5 and small ResNet
+models on the same image. Models without a saved `.keras` file appear disabled.
+The result shows which model produced the prediction. Changing the selection
+clears the old result; press **Recognise number** again to run the newly
+selected model. The first request for a model may take longer while the API
+loads it; subsequent requests reuse it. The CNN remains the default selection
+unless `HNRS_MODEL_PATH` specifies one of the other known saved-model paths.
+This selector does not retrain a model or change the actual MNIST comparison.
+
 When you have real labelled single- and multi-digit images, create a CSV
 manifest such as `data/upload_examples.csv` (paths relative to that CSV):
 

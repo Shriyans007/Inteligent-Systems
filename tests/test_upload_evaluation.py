@@ -19,7 +19,7 @@ def test_labelled_upload_evaluation_uses_api_and_segmentation(tmp_path, monkeypa
             probabilities[:, 0] = 1
             return probabilities
 
-    monkeypatch.setattr(api, "get_model", lambda: StubClassifier())
+    monkeypatch.setattr(api, "get_model", lambda model_key=api.DEFAULT_MODEL: StubClassifier())
     image = Image.new("L", (90, 40), 255)
     draw = ImageDraw.Draw(image)
     draw.rectangle((12, 8, 22, 32), fill=0)

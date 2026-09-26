@@ -112,3 +112,141 @@ matches and segmentation length mismatches for each file. Include enough
 representative images for a meaningful Task 4 assessment, and separately
 inspect the React display in your browser. The upload command evaluates the
 API's currently configured model; it does not change the default model.
+
+## Research extension: characters and handwritten words
+
+The existing ten-class MNIST number models remain under `artifacts/` and use
+`/api/predict`. The new **character** CNN reuses the shallow CNN architecture
+with 62 new outputs and its own EMNIST training. The new **word** CRNN uses
+convolutional features, a bidirectional LSTM and CTC to transcribe a single
+word without cutting it into individual characters. Neither extension model is
+trained or enabled until you run its training command locally. A word is
+resized with its aspect ratio intact and padded to 64×384. This is a word
+recogniser, not a line/page recogniser; spaces are not supported in Word mode.
+
+Put the local datasets in these folders (all of `data/` is gitignored):
+
+```text
+data/emnist/byclass/emnist-byclass-mapping.txt
+data/emnist/byclass/emnist-byclass-train-images-idx3-ubyte.gz
+data/emnist/byclass/emnist-byclass-train-labels-idx1-ubyte.gz
+data/emnist/byclass/emnist-byclass-test-images-idx3-ubyte.gz
+data/emnist/byclass/emnist-byclass-test-labels-idx1-ubyte.gz
+data/iam/ascii/words.txt
+data/iam/ascii/forms.txt
+data/iam/words/<section>/<form>/<word-id>.png
+```
+
+`forms.txt` comes from IAM `ascii.tgz`. It maps forms to writers. The loader
+uses that mapping to keep writers separate in an 80/10/10 approximate split
+with seed 42, then skips IAM segmentation errors and missing PNGs. The split
+is deterministic. The IAM character inventory is fixed from the corpus labels;
+only training writer images update model weights, and validation writers select
+an epoch. The held-out test writers are used for final metrics. This split
+will differ from IAM's official benchmark split, so compare results only when
+the evaluation protocol matches.
+
+Run these commands in **PowerShell from the repository root**. Your existing
+`(hnrs)` Python environment can be activated with:
+
+```powershell
+& "C:\venvs\hnrs\Scripts\Activate.ps1"
+python -m pip install -r requirements.txt
+```
+
+Check your extraction and orientation **before full training**:
+
+```powershell
+python -m text_recognition.emnist check
+python -m text_recognition.emnist preview
+python -m text_recognition.iam check
+```
+
+Open `artifacts\text\character\orientation_preview.png` and confirm the
+characters look upright and match the printed labels. IAM `check` reports the
+number of samples containing digits: review that count before claiming the
+word model covers mixed letters and numbers. Character and word commands
+accept `--data` for a different local dataset directory and `--output` for a
+different output directory. If extracted IAM files are nested one extra level,
+move them to the layout above rather than pointing at the archives.
+
+Optional small pipeline runs save under separate `quick` directories and are
+**not final results**:
+
+```powershell
+python -m text_recognition.emnist train --quick --epochs 2
+python -m text_recognition.iam train --quick --epochs 2
+```
+
+Run full training yourself, one command at a time. Twelve epochs is an upper
+bound for EMNIST early stopping and an upper bound for IAM validation stopping:
+
+```powershell
+python -m text_recognition.emnist train --epochs 12
+python -m text_recognition.iam train --epochs 12
+```
+
+Re-run held-out evaluation after training if needed:
+
+```powershell
+python -m text_recognition.emnist evaluate
+python -m text_recognition.iam evaluate
+```
+
+EMNIST writes `artifacts/text/character/emnist_cnn.keras`, `mapping.json`,
+`results.json`, `per_character.csv` and `confusion_matrix.csv`. Its training
+uses a fixed 90/10 training/validation split from the official training IDX;
+the official test IDX is held out until evaluation. IAM writes
+`artifacts/text/word/iam_crnn.keras`, `vocabulary.json`, `test_results.json`
+and `test_predictions.csv`. It reports character error rate (total character
+edits divided by reference characters), word error rate (fraction of incorrect
+words) and exact-word accuracy. These files contain measured results only
+after local training/evaluation. Generated models and data are ignored by Git.
+
+To test separately collected mixed letter-and-number **single words**, save
+labelled images and a local `data/mixed_words.csv`:
+
+```csv
+image,label
+room42.png,Room42
+ai2026.png,AI2026
+```
+
+Then run:
+
+```powershell
+python -m text_recognition.iam evaluate-examples --manifest data/mixed_words.csv
+```
+
+This writes `examples_results.json` and `examples_predictions.csv` beside the
+IAM model. IAM word data may contain few numeric examples, so this separate
+evaluation matters. It cannot make an unsupported character part of the model's
+vocabulary; check `vocabulary.json` after training. Real camera photos and
+mouse drawings should be tested separately from cropped dataset images.
+
+Start the API and GUI in separate PowerShell terminals from the repository
+root; activate `(hnrs)` in the API terminal:
+
+```powershell
+& "C:\venvs\hnrs\Scripts\Activate.ps1"
+uvicorn api.main:app
+```
+
+```powershell
+cd frontend
+npm.cmd install
+npm.cmd run dev
+```
+
+Open `http://localhost:5173`. Select Numbers, Character or Word and then
+Upload image or Draw here. Clear drawing erases the canvas; Reset clears the
+current result and input. Number model selection still uses the trained MNIST
+models, with CNN as the default. Character and Word show “Train the model
+first” until their `.keras` and mapping files exist; restart the backend and
+refresh the GUI after local training. Drawing uses the same API and image
+preprocessing as uploading in the selected mode. Record labelled real-image
+predictions before claiming performance outside the held-out datasets.
+
+Dataset and method references: [NIST EMNIST](https://www.nist.gov/itl/products-and-services/emnist-dataset),
+[IAM Handwriting Database](https://fki.tic.heia-fr.ch/databases/iam-handwriting-database),
+[Keras IAM word-recognition example](https://keras.io/examples/vision/handwriting_recognition/).

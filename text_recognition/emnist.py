@@ -45,7 +45,7 @@ def read_mapping(path):
 def orient(images):
     # IDX reads rows in the inverse orientation of the published character images.
     # tfds uses transpose followed by horizontal flip; here that is a 90-degree rotation.
-    return np.rot90(images, k=-1, axes=(1, 2)).copy()[..., None].astype(np.float32)/255
+    return np.rot90(images, k=-1, axes=(1, 2)).copy()[..., None]
 
 
 def load(folder, split):
@@ -59,6 +59,7 @@ def load(folder, split):
 def evaluate(model, x, y, mapping, output):
     from sklearn.metrics import confusion_matrix
     output.mkdir(parents=True, exist_ok=True)
+    x = x.astype(np.float32)/255
     loss, accuracy = model.evaluate(x, y, batch_size=256, verbose=0)
     pred = model.predict(x, batch_size=256, verbose=0).argmax(axis=1)
     cm = confusion_matrix(y, pred, labels=np.arange(62))
@@ -75,7 +76,7 @@ def evaluate(model, x, y, mapping, output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["check", "train", "evaluate"])
+    parser.add_argument("action", choices=["check", "preview", "train", "evaluate"])
     parser.add_argument("--data", type=Path, default=Path("data/emnist/byclass"))
     parser.add_argument("--output", type=Path, default=CHAR_MODEL.parent)
     parser.add_argument("--epochs", type=int, default=12)
@@ -95,6 +96,19 @@ def main():
         evaluate(model, x, y, mapping, output)
         return
     x, y = load(args.data, "train")
+    if args.action == "preview":
+        from PIL import Image, ImageDraw
+        output.mkdir(parents=True, exist_ok=True)
+        canvas = Image.new("L", (8*84, 4*98), 255)
+        pen = ImageDraw.Draw(canvas)
+        for n, index in enumerate(np.linspace(0, len(y)-1, 32, dtype=int)):
+            char = Image.fromarray(x[index, ..., 0]).resize((70, 70))
+            canvas.paste(char, ((n%8)*84, (n//8)*98))
+            pen.text(((n%8)*84, (n//8)*98+72), mapping[int(y[index])], fill=0)
+        destination = output/"orientation_preview.png"
+        canvas.save(destination)
+        print(f"Open {destination} and confirm the letters are upright before training.")
+        return
     # Fixed permutation; test is never used for callbacks or validation.
     order = np.random.default_rng(42).permutation(len(y))
     if args.quick: order = order[:4096]
@@ -103,8 +117,17 @@ def main():
     model = compile_model(build_cnn(62))
     output.mkdir(parents=True, exist_ok=True)
     (output/CHAR_MAPPING.name).write_text(json.dumps(mapping, indent=2))
-    model.fit(x[train], y[train], validation_data=(x[validation], y[validation]),
-              epochs=args.epochs if not args.quick else min(args.epochs, 2), batch_size=128,
+    keras = _keras()
+    class Batches(keras.utils.PyDataset):
+        def __init__(self, indices):
+            super().__init__()
+            self.indices = indices
+        def __len__(self): return (len(self.indices)+127)//128
+        def __getitem__(self, index):
+            selected = self.indices[index*128:(index+1)*128]
+            return x[selected].astype(np.float32)/255, y[selected]
+    model.fit(Batches(train), validation_data=Batches(validation),
+              epochs=args.epochs if not args.quick else min(args.epochs, 2),
               callbacks=[_keras().callbacks.EarlyStopping(patience=3, restore_best_weights=True)])
     model.save(model_path)
     test_x, test_y = load(args.data, "test")

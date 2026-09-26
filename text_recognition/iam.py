@@ -32,9 +32,9 @@ def read_samples(root):
     for line in labels.read_text(encoding='utf-8').splitlines():
         if not line or line.startswith('#'): continue
         parts = line.split(maxsplit=8)
-        if len(parts) < 9: raise ValueError(f'Invalid IAM words.txt entry: {line}')
-        identifier, status, transcription = parts[0], parts[1], parts[8]
-        if status == 'err': continue
+        if len(parts) < 8: raise ValueError(f'Invalid IAM words.txt entry: {line}')
+        identifier, status, transcription = parts[0], parts[1], parts[-1]
+        if status in {'er', 'err'}: continue
         form = '-'.join(identifier.split('-')[:2])
         if form not in writers: raise ValueError(f'Missing writer ID for form {form}')
         section = identifier.split('-')[0]
@@ -159,7 +159,7 @@ def main():
         return
     samples = read_samples(args.data)
     train, valid, test = split_writers(samples)
-    vocab = sorted({char for _, label, _ in samples for char in label})
+    vocab = sorted({char for _, label, _ in samples for char in label})  # fixed IAM character inventory; no images or gradients from held-out writers
     if args.action == 'check':
         print(f'IAM words: {len(samples)}; writer-disjoint train/validation/test: {len(train)}/{len(valid)}/{len(test)}')
         print(f'Words containing digits: {sum(any(c.isdigit() for c in label) for _, label, _ in samples)}')

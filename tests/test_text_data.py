@@ -20,9 +20,9 @@ def test_emnist_mapping_and_idx(tmp_path):
         file.write(b'\0\0\x08\x03' + struct.pack('>III', 1, 28, 28) + bytes(28*28))
     assert read_idx(path).shape == (1, 28, 28)
     img = np.zeros((1, 28, 28), dtype=np.uint8)
-    img[0, 0, 0] = 255
+    img[0, 2, 5] = 255
     assert orient(img).shape == (1, 28, 28, 1)
-    assert orient(img)[0, 0, 27, 0] == 255  # rotate clockwise
+    assert orient(img)[0, 5, 2, 0] == 255  # transpose, without mirroring
 
 
 def test_iam_writer_split_and_word_aspect(tmp_path):

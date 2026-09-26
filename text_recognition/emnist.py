@@ -43,9 +43,9 @@ def read_mapping(path):
 
 
 def orient(images):
-    # IDX reads rows in the inverse orientation of the published character images.
-    # tfds uses transpose followed by horizontal flip; here that is a 90-degree rotation.
-    return np.rot90(images, k=-1, axes=(1, 2)).copy()[..., None]
+    # Official EMNIST IDX images need a transpose for upright display.
+    # A 90-degree rotation alone leaves characters mirrored.
+    return np.transpose(images, (0, 2, 1)).copy()[..., None]
 
 
 def load(folder, split):

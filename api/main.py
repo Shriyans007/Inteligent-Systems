@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from PIL import Image
 from cnn_model.models import _keras
 from preprocessing import prepare_mnist_digit
 from segmentation import crops_to_model_input, segment
+from text_recognition.common import CHAR_MODEL, CHAR_MAPPING, WORD_MODEL, WORD_VOCAB, prepare_character, prepare_word
 
 MODEL_PATHS = {
     "cnn": Path("artifacts/cnn_mnist.keras"),
@@ -130,3 +132,53 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
         "lowest_confidence": min(item["confidence"] for item in predictions),
         "predictions": predictions,
     }
+
+
+EXTENSION_PATHS = {"character": (CHAR_MODEL, CHAR_MAPPING), "word": (WORD_MODEL, WORD_VOCAB)}
+_extension_models = {}
+
+
+@app.get("/api/extension-models")
+def extension_models() -> dict:
+    return {"models": [{"key": key, "available": model.is_file() and meta.is_file()}
+                       for key, (model, meta) in EXTENSION_PATHS.items()]}
+
+
+def get_extension_model(mode):
+    if mode not in EXTENSION_PATHS:
+        raise HTTPException(status_code=400, detail="Unknown recognition mode.")
+    path, metadata = EXTENSION_PATHS[mode]
+    if not path.is_file() or not metadata.is_file():
+        raise HTTPException(status_code=503, detail=f"Train the {mode} model first; expected {path} and {metadata}.")
+    if mode not in _extension_models:
+        _extension_models[mode] = (_keras().models.load_model(path), json.loads(metadata.read_text()))
+    return _extension_models[mode]
+
+
+@app.post("/api/recognise-text")
+async def recognise_text(mode: str = Form(...), file: UploadFile = File(...)) -> dict:
+    if mode not in EXTENSION_PATHS:
+        raise HTTPException(status_code=400, detail="Select character or word mode.")
+    if file.content_type not in {"image/png", "image/jpeg", "image/bmp", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Upload a PNG, JPG, BMP or WebP image.")
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="The image exceeds the 5 MB limit.")
+    try:
+        model, mapping = get_extension_model(mode)
+        with Image.open(io.BytesIO(content)) as image:
+            image.verify()
+        with Image.open(io.BytesIO(content)) as image:
+            prepared = prepare_character(image) if mode == "character" else prepare_word(image)
+        probabilities = model.predict(prepared[None, ...], verbose=0)
+        if mode == "character":
+            index = int(np.argmax(probabilities[0]))
+            return {"mode": mode, "text": mapping[str(index)], "confidence": float(probabilities[0][index])}
+        from text_recognition.iam import decode
+        return {"mode": mode, "text": decode(_keras(), probabilities, mapping)[0]}
+    except HTTPException:
+        raise
+    except (OSError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

@@ -115,9 +115,14 @@ API's currently configured model; it does not change the default model.
 
 ## Research extension: characters and handwritten words
 
-The existing ten-class MNIST number models remain under `artifacts/` and use
-`/api/predict`. The new **character** CNN reuses the shallow CNN architecture
-with 62 new outputs and its own EMNIST training. The new **word** CRNN uses
+The existing four ten-class MNIST number models (MLP, shallow CNN, LeNet-5,
+small ResNet) remain under `artifacts/` and use `/api/predict`. For the
+alphabet-and-digit extension, **retrain those same four architectures** with
+62 EMNIST ByClass outputs and compare their held-out results. The ten-class
+trained weights do not themselves recognise letters. Each 62-class model has
+its own saved weights; the previously trained EMNIST shallow CNN keeps its
+existing path and results. Character mode lets you choose among trained
+62-class models. The additional **word** CRNN uses
 convolutional features, a bidirectional LSTM and CTC to transcribe a single
 word without cutting it into individual characters. Neither extension model is
 trained or enabled until you run its training command locally. A word is
@@ -188,7 +193,7 @@ Optional small pipeline runs save under separate `quick` directories and are
 **not final results**:
 
 ```powershell
-python -m text_recognition.emnist train --quick --epochs 2
+python -m text_recognition.emnist train --model mlp --quick --epochs 2
 python -m text_recognition.iam train --quick --epochs 2
 ```
 
@@ -196,19 +201,31 @@ Run full training yourself, one command at a time. Twelve epochs is an upper
 bound for EMNIST early stopping and an upper bound for IAM validation stopping:
 
 ```powershell
-python -m text_recognition.emnist train --epochs 12
+python -m text_recognition.emnist train --model mlp --epochs 12
+python -m text_recognition.emnist train --model lenet5 --epochs 12
+python -m text_recognition.emnist train --model resnet --epochs 12
+# Only if you need to train/retrain the already trained CNN:
+python -m text_recognition.emnist train --model cnn --epochs 12
 python -m text_recognition.iam train --epochs 12
 ```
 
 Re-run held-out evaluation after training if needed:
 
 ```powershell
-python -m text_recognition.emnist evaluate
+python -m text_recognition.emnist evaluate --model cnn
+python -m text_recognition.emnist evaluate --model mlp
+python -m text_recognition.emnist evaluate --model lenet5
+python -m text_recognition.emnist evaluate --model resnet
+python -m text_recognition.emnist compare
 python -m text_recognition.iam evaluate
 ```
 
-EMNIST writes `artifacts/text/character/emnist_cnn.keras`, `mapping.json`,
-`results.json`, `per_character.csv` and `confusion_matrix.csv`. Its training
+EMNIST CNN writes `artifacts/text/character/emnist_cnn.keras`, `mapping.json`,
+`results.json`, `per_character.csv` and `confusion_matrix.csv`. For each of
+`mlp`, `lenet5` and `resnet`, the same filenames (with `emnist_<model>.keras`)
+are written in `artifacts/text/character/<model>/`. `compare` writes
+`artifacts/text/character/comparison.csv` containing only models with saved
+measured test results and prints which are pending. Its training
 uses a fixed 90/10 training/validation split from the official training IDX;
 the official test IDX is held out until evaluation. IAM writes
 `artifacts/text/word/iam_crnn.keras`, `vocabulary.json`, `test_results.json`

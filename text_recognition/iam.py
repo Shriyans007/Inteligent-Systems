@@ -138,14 +138,28 @@ def build_model(classes, width=WIDTH):
     return keras.Model(inp, out, name='iam_word_crnn')
 
 
-def batches(samples, vocab, batch_size, shuffle=False, width=WIDTH):
+def shift_word(image, rng):
+    """Translate prepared ink by at most two pixels, keeping a black background."""
+    dy, dx = rng.integers(-2, 3, size=2)
+    height, width = image.shape[:2]
+    shifted = np.zeros_like(image)
+    shifted[max(0, dy):min(height, height+dy), max(0, dx):min(width, width+dx)] = image[
+        max(0, -dy):min(height, height-dy), max(0, -dx):min(width, width-dx)]
+    return shifted
+
+
+def batches(samples, vocab, batch_size, shuffle=False, width=WIDTH, augment=False, rng=None):
+    if augment and rng is None:
+        raise ValueError('Training augmentation needs a seeded random generator.')
     order = np.arange(len(samples))
     if shuffle: np.random.default_rng(42).shuffle(order)
     for start in range(0, len(order), batch_size):
         current = [samples[i] for i in order[start:start+batch_size]]
         images, labels = [], []
         for path, label, _ in current:
-            with Image.open(path) as image: images.append(prepare_word(image, width=width))
+            with Image.open(path) as image:
+                prepared = prepare_word(image, width=width)
+            images.append(shift_word(prepared, rng) if augment else prepared)
             labels.append([vocab.index(char) for char in label])
         padded = np.zeros((len(labels), max(map(len, labels))), dtype=np.int32)
         for i, label in enumerate(labels): padded[i, :len(label)] = label
@@ -219,13 +233,14 @@ def main():
     parser.add_argument('--decoder', choices=['greedy', 'beam'], default='greedy')
     parser.add_argument('--beam-width', type=int, default=10)
     parser.add_argument('--quick', action='store_true', help='Use small subsets and save under output/quick')
+    parser.add_argument('--augment', action='store_true', help='Apply small seeded shifts to training images only')
     args = parser.parse_args()
     if args.beam_width < 1: parser.error('--beam-width must be positive')
-    if args.action == 'train' and args.variant != 'v1' and args.output == WORD_MODEL.parent:
+    if args.action == 'train' and (args.variant != 'v1' or args.augment) and args.output == WORD_MODEL.parent:
         parser.error('Use a separate --output folder for new variants to preserve the original IAM model.')
     output = args.output/'quick' if args.quick else args.output
     model_path = output/WORD_MODEL.name
-    if args.action == 'train' and args.variant != 'v1' and model_path.exists():
+    if args.action == 'train' and (args.variant != 'v1' or args.augment) and model_path.exists():
         parser.error(f'Model already exists at {model_path}; choose another --output to keep the measured run.')
     if args.action == 'audit':
         labels = args.data/'ascii'/'words.txt'
@@ -283,9 +298,11 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     (output/WORD_VOCAB.name).write_text(json.dumps(vocab, indent=2))
     best, patience = float('inf'), 0
+    augmentation_rng = np.random.default_rng(42)
     for epoch in range(min(args.epochs, 2) if args.quick else args.epochs):
         losses = []
-        for images, labels, lengths, texts in batches(train, vocab, 32, shuffle=True, width=width):
+        for images, labels, lengths, texts in batches(train, vocab, 32, shuffle=True,
+                                                      width=width, augment=args.augment, rng=augmentation_rng):
             with tf.GradientTape() as tape:
                 probabilities = model(images, training=True)
                 weights = rare_word_weights(texts) if args.variant == 'balanced' else None
@@ -303,7 +320,7 @@ def main():
         else:
             patience += 1
             if patience >= 3: break
-    if args.variant == 'v1':
+    if args.variant == 'v1' and not args.augment:
         evaluate(keras.models.load_model(model_path), test, vocab, output)
     else:
         print('New model saved. Run evaluate-validation first, then evaluate on held-out writers once.')

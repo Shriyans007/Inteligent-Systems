@@ -18,7 +18,7 @@ def test_four_character_architectures_have_distinct_artifacts(tmp_path):
     assert len(paths) == 4 and len({model for _, model, _ in paths}) == 4
     assert model_paths('cnn', tmp_path)[1] == tmp_path/'emnist_cnn.keras'
     assert model_paths('resnet', tmp_path, quick=True)[1] == tmp_path/'resnet'/'quick'/'emnist_resnet.keras'
-from text_recognition.iam import distance, read_samples, split_writers, split_label_counts, parse_word_record, audit_word_labels, decode, rare_word_weights, ctc_loss
+from text_recognition.iam import distance, read_samples, split_writers, split_label_counts, parse_word_record, audit_word_labels, decode, rare_word_weights, ctc_loss, shift_word, batches
 from text_recognition.iam_analysis import summarise
 
 
@@ -145,3 +145,21 @@ def test_iam_rare_word_weights_apply_only_when_requested(monkeypatch):
     lengths = np.array([1, 1])
     assert ctc_loss(Keras, None, probabilities, lengths) == 2.0
     assert ctc_loss(Keras, None, probabilities, lengths, np.array([1., 4.])) == pytest.approx(2.6)
+
+
+def test_iam_augmentation_changes_only_training_batch(tmp_path):
+    image = Image.new('L', (60, 25), 255)
+    ImageDraw.Draw(image).rectangle((19, 8, 33, 18), fill=0)
+    path = tmp_path/'word.png'
+    image.save(path)
+    sample = [(path, 'AB', 'writer')]
+    ordinary = next(batches(sample, ['A', 'B'], 1))[0]
+    class FixedRng:
+        def integers(self, low, high, size): return np.array([-2, 2])
+    augmented = next(batches(sample, ['A', 'B'], 1, augment=True, rng=FixedRng()))[0]
+    assert ordinary.shape == augmented.shape == (1, HEIGHT, WIDTH, 1)
+    assert not np.array_equal(ordinary, augmented)
+    assert ordinary.sum() == pytest.approx(augmented.sum())
+    assert np.array_equal(ordinary, next(batches(sample, ['A', 'B'], 1))[0])
+    with pytest.raises(ValueError, match='seeded'):
+        next(batches(sample, ['A', 'B'], 1, augment=True))

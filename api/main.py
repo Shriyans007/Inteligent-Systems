@@ -177,7 +177,7 @@ async def recognise_text(mode: str = Form(...), file: UploadFile = File(...), mo
         with Image.open(io.BytesIO(content)) as image:
             image.verify()
         with Image.open(io.BytesIO(content)) as image:
-            prepared = prepare_character(image) if mode == "character" else prepare_word(image)
+            prepared = prepare_character(image) if mode == "character" else prepare_word(image, width=int(classifier.input_shape[2]))
         probabilities = classifier.predict(prepared[None, ...], verbose=0)
         if mode == "character":
             index = int(np.argmax(probabilities[0]))

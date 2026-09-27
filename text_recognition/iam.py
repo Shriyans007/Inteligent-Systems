@@ -110,29 +110,29 @@ def split_writers(samples):
     return [[s for s in samples if s[2] in group] for group in groups]
 
 
-def build_model(classes):
+def build_model(classes, width=WIDTH):
     keras = _keras()
-    inp = keras.Input((HEIGHT, WIDTH, 1))
+    inp = keras.Input((HEIGHT, width, 1))
     x = keras.layers.Conv2D(16, 3, padding='same', activation='relu')(inp)
     x = keras.layers.MaxPooling2D((2, 2))(x)
     x = keras.layers.Conv2D(32, 3, padding='same', activation='relu')(x)
     x = keras.layers.MaxPooling2D((2, 2))(x)
     x = keras.layers.Conv2D(64, 3, padding='same', activation='relu')(x)
     x = keras.layers.Permute((2, 1, 3))(x)
-    x = keras.layers.Reshape((WIDTH//4, (HEIGHT//4)*64))(x)
+    x = keras.layers.Reshape((width//4, (HEIGHT//4)*64))(x)
     x = keras.layers.Bidirectional(keras.layers.LSTM(64, return_sequences=True))(x)
     out = keras.layers.Dense(classes+1, activation='softmax')(x)  # final class is the CTC blank
     return keras.Model(inp, out, name='iam_word_crnn')
 
 
-def batches(samples, vocab, batch_size, shuffle=False):
+def batches(samples, vocab, batch_size, shuffle=False, width=WIDTH):
     order = np.arange(len(samples))
     if shuffle: np.random.default_rng(42).shuffle(order)
     for start in range(0, len(order), batch_size):
         current = [samples[i] for i in order[start:start+batch_size]]
         images, labels = [], []
         for path, label, _ in current:
-            with Image.open(path) as image: images.append(prepare_word(image))
+            with Image.open(path) as image: images.append(prepare_word(image, width=width))
             labels.append([vocab.index(char) for char in label])
         padded = np.zeros((len(labels), max(map(len, labels))), dtype=np.int32)
         for i, label in enumerate(labels): padded[i, :len(label)] = label
@@ -147,10 +147,10 @@ def ctc_loss(keras, labels, probabilities, lengths):
                                                         tf.reshape(lengths, (-1, 1))))
 
 
-def decode(keras, probabilities, vocab):
-    import tensorflow as tf
+def decode(keras, probabilities, vocab, decoder='greedy', beam_width=10):
     lengths = np.full((len(probabilities),), probabilities.shape[1])
-    decoded, _ = keras.backend.ctc_decode(probabilities, lengths, greedy=True)
+    decoded, _ = keras.backend.ctc_decode(probabilities, lengths,
+                                          greedy=decoder == 'greedy', beam_width=beam_width)
     return [''.join(vocab[int(i)] for i in row if int(i) >= 0) for row in decoded[0].numpy()]
 
 
@@ -164,11 +164,12 @@ def distance(a, b):
     return previous[-1]
 
 
-def evaluate(model, samples, vocab, output, name='test'):
+def evaluate(model, samples, vocab, output, name='test', decoder='greedy', beam_width=10):
     keras = _keras()
     errors, characters, wrong, rows = 0, 0, 0, []
-    for images, _, _, labels in batches(samples, vocab, 32):
-        predictions = decode(keras, model.predict(images, verbose=0), vocab)
+    width = int(model.input_shape[2])
+    for images, _, _, labels in batches(samples, vocab, 32, width=width):
+        predictions = decode(keras, model.predict(images, verbose=0), vocab, decoder, beam_width)
         for actual, predicted in zip(labels, predictions):
             errors += distance(actual, predicted); characters += len(actual)
             wrong += actual != predicted
@@ -185,15 +186,24 @@ def evaluate(model, samples, vocab, output, name='test'):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['audit', 'check', 'train', 'evaluate', 'evaluate-examples'])
+    parser.add_argument('action', choices=['audit', 'check', 'train', 'evaluate', 'evaluate-validation', 'evaluate-examples'])
     parser.add_argument('--data', type=Path, default=Path('data/iam'))
     parser.add_argument('--output', type=Path, default=WORD_MODEL.parent)
     parser.add_argument('--manifest', type=Path, help='CSV with image,label columns for evaluate-examples')
     parser.add_argument('--epochs', type=int, default=12)
+    parser.add_argument('--variant', choices=['v1', 'wider'], default='v1',
+                        help='wider uses a 512-pixel word canvas; train it in a separate --output folder')
+    parser.add_argument('--decoder', choices=['greedy', 'beam'], default='greedy')
+    parser.add_argument('--beam-width', type=int, default=10)
     parser.add_argument('--quick', action='store_true', help='Use small subsets and save under output/quick')
     args = parser.parse_args()
+    if args.beam_width < 1: parser.error('--beam-width must be positive')
+    if args.action == 'train' and args.variant == 'wider' and args.output == WORD_MODEL.parent:
+        parser.error('Use --output artifacts\\text\\word_wider for wider training to preserve the original IAM model.')
     output = args.output/'quick' if args.quick else args.output
     model_path = output/WORD_MODEL.name
+    if args.action == 'train' and args.variant == 'wider' and model_path.exists():
+        parser.error(f'Wider model already exists at {model_path}; choose another --output to keep the measured run.')
     if args.action == 'audit':
         labels = args.data/'ascii'/'words.txt'
         if not labels.is_file():
@@ -214,7 +224,7 @@ def main():
                 samples.append((path, row['label'], 'external'))
         if not samples: raise ValueError('The example manifest has no rows.')
         vocab = json.loads((output/WORD_VOCAB.name).read_text())
-        evaluate(_keras().models.load_model(model_path), samples, vocab, output, 'examples')
+        evaluate(_keras().models.load_model(model_path), samples, vocab, output, 'examples', args.decoder, args.beam_width)
         return
     samples = read_samples(args.data, validate_images=True)
     train, valid, test = split_writers(samples)
@@ -224,10 +234,14 @@ def main():
         print(f'Words containing digits: {sum(any(c.isdigit() for c in label) for _, label, _ in samples)}')
         print('Review this count before claiming mixed letter-and-number recognition.')
         return
-    if args.action == 'evaluate':
+    if args.action in {'evaluate', 'evaluate-validation'}:
         if not model_path.is_file(): raise FileNotFoundError(f'Train the IAM word model first: {model_path}')
         saved_vocab = json.loads((output/WORD_VOCAB.name).read_text())
-        evaluate(_keras().models.load_model(model_path), test, saved_vocab, output)
+        validation = args.action == 'evaluate-validation'
+        name = 'validation' if validation else 'test'
+        if args.decoder == 'beam': name += f'_beam{args.beam_width}'
+        evaluate(_keras().models.load_model(model_path), valid if validation else test,
+                 saved_vocab, output, name, args.decoder, args.beam_width)
         return
     keras = _keras()
     import tensorflow as tf
@@ -235,24 +249,25 @@ def main():
     if args.quick: train, valid, test = train[:128], valid[:32], test[:32]
     if any(not section for section in (train, valid, test)): raise ValueError('Empty IAM split.')
     # Repeated adjacent labels require extra CTC time steps. Limit excessively long labels.
-    capacity = WIDTH//4
+    width = 512 if args.variant == 'wider' else WIDTH
+    capacity = width//4
     def fits(label): return len(label)+sum(a==b for a, b in zip(label, label[1:])) <= capacity
     train, valid, test = [[s for s in section if fits(s[1])] for section in (train, valid, test)]
-    model = build_model(len(vocab))
+    model = build_model(len(vocab), width=width)
     optimizer = keras.optimizers.Adam(1e-3)
     output.mkdir(parents=True, exist_ok=True)
     (output/WORD_VOCAB.name).write_text(json.dumps(vocab, indent=2))
     best, patience = float('inf'), 0
     for epoch in range(min(args.epochs, 2) if args.quick else args.epochs):
         losses = []
-        for images, labels, lengths, _ in batches(train, vocab, 32, shuffle=True):
+        for images, labels, lengths, _ in batches(train, vocab, 32, shuffle=True, width=width):
             with tf.GradientTape() as tape:
                 probabilities = model(images, training=True)
                 loss = ctc_loss(keras, labels, probabilities, lengths)
             optimizer.apply_gradients(zip(tape.gradient(loss, model.trainable_variables), model.trainable_variables))
             losses.append(float(loss))
         validation = []
-        for images, labels, lengths, _ in batches(valid, vocab, 32):
+        for images, labels, lengths, _ in batches(valid, vocab, 32, width=width):
             validation.append(float(ctc_loss(keras, labels, model(images, training=False), lengths)))
         score = float(np.mean(validation))
         print(f'Epoch {epoch+1}: train CTC {np.mean(losses):.4f}, validation CTC {score:.4f}')

@@ -16,7 +16,7 @@ def prepare_character(image):
     return prepare_mnist_digit(image)[0]
 
 
-def prepare_word(image):
+def prepare_word(image, width=WIDTH):
     """Keep the word's proportions; add background padding to a fixed canvas."""
     gray = image.convert("L")
     pixels = np.asarray(gray)
@@ -30,9 +30,9 @@ def prepare_word(image):
     yy, xx = np.where(mask)
     cropped = gray.crop((max(0, xx.min()-3), max(0, yy.min()-3),
                          min(gray.width, xx.max()+4), min(gray.height, yy.max()+4)))
-    scale = min((WIDTH-16)/cropped.width, (HEIGHT-12)/cropped.height)
+    scale = min((width-16)/cropped.width, (HEIGHT-12)/cropped.height)
     size = (max(1, round(cropped.width*scale)), max(1, round(cropped.height*scale)))
     resized = cropped.resize(size, Image.Resampling.LANCZOS)
-    canvas = Image.new("L", (WIDTH, HEIGHT), 255)
+    canvas = Image.new("L", (width, HEIGHT), 255)
     canvas.paste(resized, (8, (HEIGHT-size[1])//2))
     return (1 - np.asarray(canvas, dtype=np.float32)/255)[..., None]

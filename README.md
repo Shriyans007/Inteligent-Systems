@@ -255,6 +255,63 @@ evaluation matters. It cannot make an unsupported character part of the model's
 vocabulary; check `vocabulary.json` after training. Real camera photos and
 mouse drawings should be tested separately from cropped dataset images.
 
+### Diagnose and improve IAM word recognition
+
+Keep the first IAM model and its measured test files as the baseline. From the
+project root in `(hnrs)`, analyse **all rows** of the locally saved predictions
+CSV without loading the IAM dataset or training a model:
+
+```powershell
+python -m text_recognition.iam_analysis --predictions artifacts\text\word\test_predictions.csv
+```
+
+This prints word length, all-capitals, digit and punctuation/space groups, and
+writes `artifacts\text\word\error_analysis.json` with the counts and frequent
+mistakes. The groups overlap, so do not add their counts together. The held-out
+test CSV is descriptive evidence; use **validation** writers to choose a
+change, not test accuracy to tune the model.
+
+First compare greedy versus beam CTC decoding on the *existing saved model*
+without retraining (each command rereads local IAM images):
+
+```powershell
+python -m text_recognition.iam evaluate-validation --data "C:\hnrs-data\iam" --decoder greedy
+python -m text_recognition.iam evaluate-validation --data "C:\hnrs-data\iam" --decoder beam --beam-width 10
+```
+
+These create separate `validation_predictions.csv`, `validation_results.json`,
+`validation_beam10_predictions.csv` and `validation_beam10_results.json` in
+`artifacts\text\word`. If beam improves validation CER and exact-word accuracy,
+measure it on the same held-out writers with:
+
+```powershell
+python -m text_recognition.iam evaluate --data "C:\hnrs-data\iam" --decoder beam --beam-width 10
+```
+
+That writes `test_beam10_results.json` and `test_beam10_predictions.csv` and
+keeps the first `test_results.json` intact. Beam decoding is another way to
+read the saved model's probabilities; an improvement is not guaranteed.
+
+If the analysis shows long words are weak, optionally train a new **wider**
+version with the same IAM writer split, architecture and labels but a 512-pixel
+word canvas (instead of 384). This is a fresh run, may take longer on a CPU,
+and does not load or replace the original weights:
+
+```powershell
+python -m text_recognition.iam train --data "C:\hnrs-data\iam" --variant wider --output "artifacts\text\word_wider" --epochs 12
+python -m text_recognition.iam evaluate-validation --data "C:\hnrs-data\iam" --output "artifacts\text\word_wider"
+```
+
+The new files are `artifacts\text\word_wider\iam_crnn.keras`,
+`vocabulary.json`, `test_results.json`, and `test_predictions.csv`. Review
+validation scores before comparing its test results; training itself records
+the test results once for reference. The original Word GUI/API still selects
+the original trained model. Because the original test predictions were already
+examined when proposing changes, document any improvement on that test as an
+exploratory comparison and evaluate additional labelled handwritten words
+before making a strong generalisation claim. The held-out IAM test writers
+must never be added to training or validation.
+
 Start the API and GUI in separate PowerShell terminals from the repository
 root; activate `(hnrs)` in the API terminal:
 

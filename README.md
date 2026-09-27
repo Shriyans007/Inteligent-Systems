@@ -301,6 +301,32 @@ That writes `test_beam10_results.json` and `test_beam10_predictions.csv` and
 keeps the first `test_results.json` intact. Beam decoding is another way to
 read the saved model's probabilities; an improvement is not guaranteed.
 
+If the train split contains few all-capital or digit words, try one controlled
+**balanced** run: it gives those training words four times the weight in CTC
+loss, without copying test/validation words or changing the architecture,
+input size or decoder. The weighted training loss is not numerically comparable
+to the original unweighted training loss. Use validation CER and exact-word
+accuracy instead; upweighting may still overfit scarce writing styles.
+
+```powershell
+python -m text_recognition.iam train --quick --data "C:\hnrs-data\iam" --variant balanced --output "artifacts\text\word_balanced" --epochs 2
+python -m text_recognition.iam train --data "C:\hnrs-data\iam" --variant balanced --output "artifacts\text\word_balanced" --epochs 12
+python -m text_recognition.iam evaluate-validation --data "C:\hnrs-data\iam" --output "artifacts\text\word_balanced"
+```
+
+The quick check saves under `word_balanced\quick` and cannot overwrite the
+original model or final balanced path. After reviewing the new validation
+results against `artifacts\text\word\validation_results.json`, run held-out
+evaluation **once** if the new model merits comparison:
+
+```powershell
+python -m text_recognition.iam evaluate --data "C:\hnrs-data\iam" --output "artifacts\text\word_balanced"
+```
+
+Few training samples mix letters and digits. A higher weight does not create
+new writing styles, so independently labelled alphanumeric words remain
+necessary to evaluate that specific research claim.
+
 If the analysis shows long words are weak, optionally train a new **wider**
 version with the same IAM writer split, architecture and labels but a 512-pixel
 word canvas (instead of 384). This is a fresh run, may take longer on a CPU,
@@ -311,10 +337,10 @@ python -m text_recognition.iam train --data "C:\hnrs-data\iam" --variant wider -
 python -m text_recognition.iam evaluate-validation --data "C:\hnrs-data\iam" --output "artifacts\text\word_wider"
 ```
 
-The new files are `artifacts\text\word_wider\iam_crnn.keras`,
-`vocabulary.json`, `test_results.json`, and `test_predictions.csv`. Review
-validation scores before comparing its test results; training itself records
-the test results once for reference. The original Word GUI/API still selects
+The new files include `artifacts\text\word_wider\iam_crnn.keras` and
+`vocabulary.json`. Neither new variant runs held-out evaluation during
+training: run `evaluate-validation` first, then `evaluate` to create
+`test_results.json` and `test_predictions.csv` if warranted. The original Word GUI/API still selects
 the original trained model. Because the original test predictions were already
 examined when proposing changes, document any improvement on that test as an
 exploratory comparison and evaluate additional labelled handwritten words

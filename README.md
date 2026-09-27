@@ -327,6 +327,21 @@ Few training samples mix letters and digits. A higher weight does not create
 new writing styles, so independently labelled alphanumeric words remain
 necessary to evaluate that specific research claim.
 
+An optional second experiment adds seeded shifts of at most two pixels to
+**training images only**, while leaving validation and test preprocessing
+untouched. Use a new folder, never the path of a running or completed model:
+
+```powershell
+python -m text_recognition.iam train --quick --data "C:\hnrs-data\iam" --variant balanced --augment --output "artifacts\text\word_balanced_aug" --epochs 2
+python -m text_recognition.iam train --data "C:\hnrs-data\iam" --variant balanced --augment --output "artifacts\text\word_balanced_aug" --epochs 12
+python -m text_recognition.iam evaluate-validation --data "C:\hnrs-data\iam" --output "artifacts\text\word_balanced_aug"
+```
+
+Compare validation results before deciding whether to evaluate this model on
+held-out data. If the balanced run is already under way, let it finish first.
+Shifts offer limited variation and cannot make the model recognise writing
+styles or digit examples absent from IAM.
+
 If the analysis shows long words are weak, optionally train a new **wider**
 version with the same IAM writer split, architecture and labels but a 512-pixel
 word canvas (instead of 384). This is a fresh run, may take longer on a CPU,

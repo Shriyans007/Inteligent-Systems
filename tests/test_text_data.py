@@ -16,7 +16,7 @@ def test_four_character_architectures_have_distinct_artifacts(tmp_path):
     assert len(paths) == 4 and len({model for _, model, _ in paths}) == 4
     assert model_paths('cnn', tmp_path)[1] == tmp_path/'emnist_cnn.keras'
     assert model_paths('resnet', tmp_path, quick=True)[1] == tmp_path/'resnet'/'quick'/'emnist_resnet.keras'
-from text_recognition.iam import distance, read_samples, split_writers, parse_word_record, audit_word_labels, decode
+from text_recognition.iam import distance, read_samples, split_writers, split_label_counts, parse_word_record, audit_word_labels, decode
 from text_recognition.iam_analysis import summarise
 
 
@@ -116,3 +116,10 @@ def test_iam_decoder_passes_greedy_and_beam_settings():
     assert Keras.backend.options == {'greedy': False, 'beam_width': 12}
     assert decode(Keras, probabilities, ['a', 'b']) == ['ab']
     assert Keras.backend.options['greedy'] is True
+
+
+def test_iam_split_label_counts():
+    samples = [(None, label, 'writer') for label in ['MOVE', 'Room42', 'a', 'abcdefghij']]
+    assert split_label_counts(samples) == {'words': 4, 'all_capitals': 1,
+                                           'contains_digit': 1, 'mixed_letters_digits': 1,
+                                           'length_5_8': 1, 'length_9_plus': 1}

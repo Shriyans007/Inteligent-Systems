@@ -271,6 +271,15 @@ mistakes. The groups overlap, so do not add their counts together. The held-out
 test CSV is descriptive evidence; use **validation** writers to choose a
 change, not test accuracy to tune the model.
 
+Check how many usable labels of each type actually reached each writer split
+before planning a new training run:
+
+```powershell
+python -m text_recognition.iam check --data "C:\hnrs-data\iam"
+```
+
+This reads and validates the IAM images, but does not train or change a model.
+
 First compare greedy versus beam CTC decoding on the *existing saved model*
 without retraining (each command rereads local IAM images):
 

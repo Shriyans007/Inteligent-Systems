@@ -110,6 +110,19 @@ def split_writers(samples):
     return [[s for s in samples if s[2] in group] for group in groups]
 
 
+def split_label_counts(samples):
+    """Count word types in one writer split without using test images for training."""
+    labels = [label for _, label, _ in samples]
+    return {
+        'words': len(labels),
+        'all_capitals': sum(label.isupper() and any(c.isalpha() for c in label) for label in labels),
+        'contains_digit': sum(any(c.isdigit() for c in label) for label in labels),
+        'mixed_letters_digits': sum(any(c.isdigit() for c in label) and any(c.isalpha() for c in label) for label in labels),
+        'length_5_8': sum(5 <= len(label) <= 8 for label in labels),
+        'length_9_plus': sum(len(label) >= 9 for label in labels),
+    }
+
+
 def build_model(classes, width=WIDTH):
     keras = _keras()
     inp = keras.Input((HEIGHT, width, 1))
@@ -232,6 +245,8 @@ def main():
     if args.action == 'check':
         print(f'IAM words: {len(samples)}; writer-disjoint train/validation/test: {len(train)}/{len(valid)}/{len(test)}')
         print(f'Words containing digits: {sum(any(c.isdigit() for c in label) for _, label, _ in samples)}')
+        for name, section in [('train', train), ('validation', valid), ('test', test)]:
+            print(f'{name} labels: {json.dumps(split_label_counts(section))}')
         print('Review this count before claiming mixed letter-and-number recognition.')
         return
     if args.action in {'evaluate', 'evaluate-validation'}:

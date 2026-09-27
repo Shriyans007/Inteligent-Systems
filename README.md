@@ -162,6 +162,20 @@ python -m text_recognition.emnist preview
 python -m text_recognition.iam check
 ```
 
+Before another IAM training run, audit the source labels (this only reads
+`words.txt`, does not retrain or overwrite the saved model):
+
+```powershell
+python -m text_recognition.iam audit --data "C:\hnrs-data\iam"
+```
+
+The IAM metadata appears in both nine-field and ten-field forms. An earlier
+loader version could accidentally include a grammatical tag in some labels
+from ten-field records. The audit prints the number of labels changed by the
+corrected parser. Keep the first-run results as the measured baseline; decide
+whether to retrain only after reviewing the count. The existing saved model
+is not rewritten by `audit`.
+
 Open `artifacts\text\character\orientation_preview.png` and confirm the
 characters look upright and match the printed labels. IAM `check` reports the
 number of samples containing digits: review that count before claiming the

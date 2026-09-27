@@ -11,6 +11,43 @@ from cnn_model.models import _keras
 from .common import HEIGHT, WIDTH, WORD_MODEL, WORD_VOCAB, prepare_word
 
 
+
+def parse_word_record(line):
+    """Parse either IAM words.txt layout, including optional component count.
+
+    Some releases have nine fields before any spaces in a transcription;
+    others have ten because they include a component count. The eighth
+    token is a numeric box height only in the latter layout.
+    """
+    parts = line.split()
+    if len(parts) < 9:
+        raise ValueError(f'Invalid IAM words.txt entry: {line}')
+    has_components = len(parts) >= 10 and parts[7].isdigit()
+    label_start = 9 if has_components else 8
+    if len(parts) <= label_start:
+        raise ValueError(f'Missing IAM word transcription: {line}')
+    return parts[0], parts[1], ' '.join(parts[label_start:]), has_components
+
+
+def audit_word_labels(labels):
+    """Count entries whose labels differ under the old and corrected parser."""
+    total = changed = with_components = 0
+    examples = []
+    for line in labels.read_text(encoding='utf-8').splitlines():
+        if not line.strip() or line.startswith('#'):
+            continue
+        _, status, transcription, has_components = parse_word_record(line)
+        if status in {'er', 'err'}:
+            continue
+        total += 1
+        with_components += has_components
+        old_label = line.split(maxsplit=8)[-1]
+        if old_label != transcription:
+            changed += 1
+            if len(examples) < 5:
+                examples.append((old_label, transcription))
+    return total, with_components, changed, examples
+
 def read_samples(root, validate_images=False):
     labels = root / 'ascii' / 'words.txt'
     if not labels.is_file():
@@ -31,9 +68,7 @@ def read_samples(root, validate_images=False):
     missing = 0
     for line in labels.read_text(encoding='utf-8').splitlines():
         if not line or line.startswith('#'): continue
-        parts = line.split(maxsplit=8)
-        if len(parts) < 8: raise ValueError(f'Invalid IAM words.txt entry: {line}')
-        identifier, status, transcription = parts[0], parts[1], parts[-1]
+        identifier, status, transcription, _ = parse_word_record(line)
         if status in {'er', 'err'}: continue
         form = '-'.join(identifier.split('-')[:2])
         if form not in writers: raise ValueError(f'Missing writer ID for form {form}')
@@ -150,7 +185,7 @@ def evaluate(model, samples, vocab, output, name='test'):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['check', 'train', 'evaluate', 'evaluate-examples'])
+    parser.add_argument('action', choices=['audit', 'check', 'train', 'evaluate', 'evaluate-examples'])
     parser.add_argument('--data', type=Path, default=Path('data/iam'))
     parser.add_argument('--output', type=Path, default=WORD_MODEL.parent)
     parser.add_argument('--manifest', type=Path, help='CSV with image,label columns for evaluate-examples')
@@ -159,6 +194,15 @@ def main():
     args = parser.parse_args()
     output = args.output/'quick' if args.quick else args.output
     model_path = output/WORD_MODEL.name
+    if args.action == 'audit':
+        labels = args.data/'ascii'/'words.txt'
+        if not labels.is_file():
+            raise FileNotFoundError(f'IAM labels missing: {labels}')
+        total, with_components, changed, examples = audit_word_labels(labels)
+        print(f'IAM labels: {total}; component-field entries: {with_components}; labels changed by parser fix: {changed}')
+        for old, corrected in examples:
+            print(f'  previously {old!r} -> corrected {corrected!r}')
+        return
     if args.action == 'evaluate-examples':
         if not args.manifest: parser.error('--manifest is required for evaluate-examples')
         if not model_path.is_file(): raise FileNotFoundError(f'Train the IAM word model first: {model_path}')

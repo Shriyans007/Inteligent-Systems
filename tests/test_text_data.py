@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw
 
 from text_recognition.common import HEIGHT, WIDTH, prepare_word
 from text_recognition.emnist import orient, read_idx, read_mapping
-from text_recognition.iam import distance, read_samples, split_writers
+from text_recognition.iam import distance, read_samples, split_writers, parse_word_record, audit_word_labels
 
 
 def test_emnist_mapping_and_idx(tmp_path):
@@ -59,3 +59,15 @@ def test_iam_writer_split_and_word_aspect(tmp_path):
     assert distance('Room42', 'Room43') == 1
     with pytest.raises(ValueError, match='visible writing'):
         prepare_word(Image.new('L', (120, 40), 255))
+
+
+def test_iam_optional_component_count_and_multiword_labels(tmp_path):
+    standard = 'a01-000u-00-00 ok 154 408 768 27 51 AT A'
+    with_component = 'a01-000u-00-01 ok 154 1 408 768 27 51 AT MOVE'
+    phrase = 'a01-000u-00-02 ok 154 408 768 27 51 NN B B C'
+    assert parse_word_record(standard)[2:] == ('A', False)
+    assert parse_word_record(with_component)[2:] == ('MOVE', True)
+    assert parse_word_record(phrase)[2:] == ('B B C', False)
+    labels = tmp_path/'words.txt'
+    labels.write_text('\n'.join([standard, with_component, phrase]))
+    assert audit_word_labels(labels)[:3] == (3, 1, 1)

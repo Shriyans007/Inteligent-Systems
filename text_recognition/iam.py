@@ -152,12 +152,22 @@ def batches(samples, vocab, batch_size, shuffle=False, width=WIDTH):
         yield np.array(images, dtype=np.float32), padded, np.array([len(x) for x in labels], dtype=np.int32), [x[1] for x in current]
 
 
-def ctc_loss(keras, labels, probabilities, lengths):
+def rare_word_weights(labels, multiplier=4.0):
+    """Use only training transcriptions to upweight scarce capital/digit words."""
+    return np.array([multiplier if (label.isupper() and any(c.isalpha() for c in label))
+                     or any(c.isdigit() for c in label) else 1.0 for label in labels], dtype=np.float32)
+
+
+def ctc_loss(keras, labels, probabilities, lengths, weights=None):
     import tensorflow as tf
     batch = tf.shape(probabilities)[0]
     input_lengths = tf.fill((batch, 1), tf.shape(probabilities)[1])
-    return tf.reduce_mean(keras.backend.ctc_batch_cost(labels, probabilities, input_lengths,
-                                                        tf.reshape(lengths, (-1, 1))))
+    losses = keras.backend.ctc_batch_cost(labels, probabilities, input_lengths,
+                                          tf.reshape(lengths, (-1, 1)))
+    if weights is None:
+        return tf.reduce_mean(losses)
+    weights = tf.reshape(tf.convert_to_tensor(weights, dtype=losses.dtype), (-1, 1))
+    return tf.reduce_sum(losses * weights) / tf.reduce_sum(weights)
 
 
 def decode(keras, probabilities, vocab, decoder='greedy', beam_width=10):
@@ -204,19 +214,19 @@ def main():
     parser.add_argument('--output', type=Path, default=WORD_MODEL.parent)
     parser.add_argument('--manifest', type=Path, help='CSV with image,label columns for evaluate-examples')
     parser.add_argument('--epochs', type=int, default=12)
-    parser.add_argument('--variant', choices=['v1', 'wider'], default='v1',
-                        help='wider uses a 512-pixel word canvas; train it in a separate --output folder')
+    parser.add_argument('--variant', choices=['v1', 'wider', 'balanced'], default='v1',
+                        help='balanced upweights scarce capitals/digits; wider uses a 512-pixel canvas; use separate --output')
     parser.add_argument('--decoder', choices=['greedy', 'beam'], default='greedy')
     parser.add_argument('--beam-width', type=int, default=10)
     parser.add_argument('--quick', action='store_true', help='Use small subsets and save under output/quick')
     args = parser.parse_args()
     if args.beam_width < 1: parser.error('--beam-width must be positive')
-    if args.action == 'train' and args.variant == 'wider' and args.output == WORD_MODEL.parent:
-        parser.error('Use --output artifacts\\text\\word_wider for wider training to preserve the original IAM model.')
+    if args.action == 'train' and args.variant != 'v1' and args.output == WORD_MODEL.parent:
+        parser.error('Use a separate --output folder for new variants to preserve the original IAM model.')
     output = args.output/'quick' if args.quick else args.output
     model_path = output/WORD_MODEL.name
-    if args.action == 'train' and args.variant == 'wider' and model_path.exists():
-        parser.error(f'Wider model already exists at {model_path}; choose another --output to keep the measured run.')
+    if args.action == 'train' and args.variant != 'v1' and model_path.exists():
+        parser.error(f'Model already exists at {model_path}; choose another --output to keep the measured run.')
     if args.action == 'audit':
         labels = args.data/'ascii'/'words.txt'
         if not labels.is_file():
@@ -275,10 +285,11 @@ def main():
     best, patience = float('inf'), 0
     for epoch in range(min(args.epochs, 2) if args.quick else args.epochs):
         losses = []
-        for images, labels, lengths, _ in batches(train, vocab, 32, shuffle=True, width=width):
+        for images, labels, lengths, texts in batches(train, vocab, 32, shuffle=True, width=width):
             with tf.GradientTape() as tape:
                 probabilities = model(images, training=True)
-                loss = ctc_loss(keras, labels, probabilities, lengths)
+                weights = rare_word_weights(texts) if args.variant == 'balanced' else None
+                loss = ctc_loss(keras, labels, probabilities, lengths, weights=weights)
             optimizer.apply_gradients(zip(tape.gradient(loss, model.trainable_variables), model.trainable_variables))
             losses.append(float(loss))
         validation = []
@@ -292,6 +303,9 @@ def main():
         else:
             patience += 1
             if patience >= 3: break
-    evaluate(keras.models.load_model(model_path), test, vocab, output)
+    if args.variant == 'v1':
+        evaluate(keras.models.load_model(model_path), test, vocab, output)
+    else:
+        print('New model saved. Run evaluate-validation first, then evaluate on held-out writers once.')
 
 if __name__ == '__main__': main()

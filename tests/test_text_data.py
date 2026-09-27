@@ -2,6 +2,8 @@
 import gzip
 import csv
 import struct
+import sys
+import types
 
 import numpy as np
 import pytest
@@ -16,7 +18,7 @@ def test_four_character_architectures_have_distinct_artifacts(tmp_path):
     assert len(paths) == 4 and len({model for _, model, _ in paths}) == 4
     assert model_paths('cnn', tmp_path)[1] == tmp_path/'emnist_cnn.keras'
     assert model_paths('resnet', tmp_path, quick=True)[1] == tmp_path/'resnet'/'quick'/'emnist_resnet.keras'
-from text_recognition.iam import distance, read_samples, split_writers, split_label_counts, parse_word_record, audit_word_labels, decode
+from text_recognition.iam import distance, read_samples, split_writers, split_label_counts, parse_word_record, audit_word_labels, decode, rare_word_weights, ctc_loss
 from text_recognition.iam_analysis import summarise
 
 
@@ -123,3 +125,23 @@ def test_iam_split_label_counts():
     assert split_label_counts(samples) == {'words': 4, 'all_capitals': 1,
                                            'contains_digit': 1, 'mixed_letters_digits': 1,
                                            'length_5_8': 1, 'length_9_plus': 1}
+
+
+def test_iam_rare_word_weights_apply_only_when_requested(monkeypatch):
+    weights = rare_word_weights(['a', 'MOVE', 'Room42', 'AB12'])
+    assert list(weights) == [1.0, 4.0, 4.0, 4.0]
+    # Check normalisation at the CTC boundary without requiring TensorFlow training.
+    monkeypatch.setitem(sys.modules, 'tensorflow', types.SimpleNamespace(
+        shape=np.shape, fill=np.full, reshape=np.reshape, convert_to_tensor=np.asarray,
+        reduce_sum=np.sum, reduce_mean=np.mean))
+    class Backend:
+        @staticmethod
+        def ctc_batch_cost(labels, probabilities, input_lengths, lengths):
+            assert list(input_lengths[:, 0]) == [6, 6]
+            return np.array([[1.0], [3.0]], dtype=np.float32)
+    class Keras:
+        backend = Backend()
+    probabilities = np.zeros((2, 6, 3), dtype=np.float32)
+    lengths = np.array([1, 1])
+    assert ctc_loss(Keras, None, probabilities, lengths) == 2.0
+    assert ctc_loss(Keras, None, probabilities, lengths, np.array([1., 4.])) == pytest.approx(2.6)

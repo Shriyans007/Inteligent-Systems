@@ -7,7 +7,14 @@ import pytest
 from PIL import Image, ImageDraw
 
 from text_recognition.common import HEIGHT, WIDTH, prepare_word
-from text_recognition.emnist import orient, read_idx, read_mapping
+from text_recognition.emnist import orient, read_idx, read_mapping, model_paths, BUILDERS
+
+
+def test_four_character_architectures_have_distinct_artifacts(tmp_path):
+    paths = [model_paths(key, tmp_path) for key in BUILDERS]
+    assert len(paths) == 4 and len({model for _, model, _ in paths}) == 4
+    assert model_paths('cnn', tmp_path)[1] == tmp_path/'emnist_cnn.keras'
+    assert model_paths('resnet', tmp_path, quick=True)[1] == tmp_path/'resnet'/'quick'/'emnist_resnet.keras'
 from text_recognition.iam import distance, read_samples, split_writers, parse_word_record, audit_word_labels
 
 

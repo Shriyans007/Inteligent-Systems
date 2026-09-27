@@ -1,4 +1,4 @@
-"""Read official EMNIST ByClass IDX archives and train a separate 62-way CNN."""
+"""Train and evaluate the four existing architectures on 62 EMNIST classes."""
 import argparse
 import csv
 import gzip
@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import struct
 import numpy as np
-from cnn_model.models import build_cnn, compile_model, _keras
+from cnn_model.models import build_cnn, build_mlp, build_lenet5, build_resnet, compile_model, _keras
 from .common import CHAR_MODEL, CHAR_MAPPING
 
 FILES = {"train_images": "emnist-byclass-train-images-idx3-ubyte.gz",
@@ -14,6 +14,15 @@ FILES = {"train_images": "emnist-byclass-train-images-idx3-ubyte.gz",
          "test_images": "emnist-byclass-test-images-idx3-ubyte.gz",
          "test_labels": "emnist-byclass-test-labels-idx1-ubyte.gz",
          "mapping": "emnist-byclass-mapping.txt"}
+BUILDERS = {"cnn": build_cnn, "mlp": build_mlp, "lenet5": build_lenet5, "resnet": build_resnet}
+
+
+def model_paths(name, base=CHAR_MODEL.parent, quick=False):
+    """Retain the existing CNN artifact while isolating each other experiment."""
+    output = base if name == "cnn" else base/name
+    if quick:
+        output = output/"quick"
+    return output, output/f"emnist_{name}.keras", output/CHAR_MAPPING.name
 
 
 def check_data(folder):
@@ -76,21 +85,39 @@ def evaluate(model, x, y, mapping, output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["check", "preview", "train", "evaluate"])
+    parser.add_argument("action", choices=["check", "preview", "train", "evaluate", "compare"])
+    parser.add_argument("--model", choices=BUILDERS, default="cnn", help="One of the original four architectures; default: cnn")
     parser.add_argument("--data", type=Path, default=Path("data/emnist/byclass"))
     parser.add_argument("--output", type=Path, default=CHAR_MODEL.parent)
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--quick", action="store_true", help="Use small train/test subsets in a separate output directory")
     args = parser.parse_args()
+    if args.action == "compare":
+        rows = []
+        for name in BUILDERS:
+            folder, _, _ = model_paths(name, args.output)
+            result_path = folder/"results.json"
+            if not result_path.is_file():
+                print(f"Pending {name}: {result_path}")
+                continue
+            result = json.loads(result_path.read_text())
+            rows.append({"model": name, **{key: result[key] for key in ("test_loss", "test_accuracy", "test_samples")}})
+        if rows:
+            destination = args.output/"comparison.csv"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with destination.open("w", newline="") as file:
+                writer = csv.DictWriter(file, fieldnames=["model", "test_loss", "test_accuracy", "test_samples"])
+                writer.writeheader(); writer.writerows(rows)
+            print(f"Compared {len(rows)} measured model(s): {destination}")
+        return
     check_data(args.data)
     mapping = read_mapping(args.data/FILES["mapping"])
     if args.action == "check":
         print("EMNIST files and 62-character mapping found. Verify the orientation by viewing samples before full training.")
         return
-    output = args.output / "quick" if args.quick else args.output
-    model_path = output/CHAR_MODEL.name
+    output, model_path, mapping_path = model_paths(args.model, args.output, args.quick)
     if args.action == "evaluate":
-        if not model_path.is_file(): raise FileNotFoundError(f"Train the EMNIST model first: {model_path}")
+        if not model_path.is_file(): raise FileNotFoundError(f"Train the EMNIST {args.model} model first: {model_path}")
         model = _keras().models.load_model(model_path)
         x, y = load(args.data, "test")
         evaluate(model, x, y, mapping, output)
@@ -114,9 +141,9 @@ def main():
     if args.quick: order = order[:4096]
     cut = int(len(order)*0.9)
     train, validation = order[:cut], order[cut:]
-    model = compile_model(build_cnn(62))
+    model = compile_model(BUILDERS[args.model](62))
     output.mkdir(parents=True, exist_ok=True)
-    (output/CHAR_MAPPING.name).write_text(json.dumps(mapping, indent=2))
+    mapping_path.write_text(json.dumps(mapping, indent=2))
     keras = _keras()
     class Batches(keras.utils.PyDataset):
         def __init__(self, indices):

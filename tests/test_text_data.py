@@ -1,5 +1,6 @@
 """Small fixtures exercise parsing and image contracts without downloading datasets."""
 import gzip
+import csv
 import struct
 
 import numpy as np
@@ -15,7 +16,8 @@ def test_four_character_architectures_have_distinct_artifacts(tmp_path):
     assert len(paths) == 4 and len({model for _, model, _ in paths}) == 4
     assert model_paths('cnn', tmp_path)[1] == tmp_path/'emnist_cnn.keras'
     assert model_paths('resnet', tmp_path, quick=True)[1] == tmp_path/'resnet'/'quick'/'emnist_resnet.keras'
-from text_recognition.iam import distance, read_samples, split_writers, parse_word_record, audit_word_labels
+from text_recognition.iam import distance, read_samples, split_writers, parse_word_record, audit_word_labels, decode
+from text_recognition.iam_analysis import summarise
 
 
 def test_emnist_mapping_and_idx(tmp_path):
@@ -62,6 +64,7 @@ def test_iam_writer_split_and_word_aspect(tmp_path):
     ImageDraw.Draw(image).text((4, 4), 'Test42', fill=0)
     ready = prepare_word(image)
     assert ready.shape == (HEIGHT, WIDTH, 1)
+    assert prepare_word(image, width=512).shape == (HEIGHT, 512, 1)
     assert ready.dtype == np.float32 and ready.max() > 0
     assert distance('Room42', 'Room43') == 1
     with pytest.raises(ValueError, match='visible writing'):
@@ -78,3 +81,38 @@ def test_iam_optional_component_count_and_multiword_labels(tmp_path):
     labels = tmp_path/'words.txt'
     labels.write_text('\n'.join([standard, with_component, phrase]))
     assert audit_word_labels(labels)[:3] == (3, 1, 1)
+
+
+def test_iam_error_analysis_reads_entire_csv(tmp_path):
+    path = tmp_path/'predictions.csv'
+    with path.open('w', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        writer.writerows([['actual', 'predicted'], ['MOVE', 'Mov'], ['room42', 'room42'],
+                          ['conference', 'conferene'], ['a', 'a']])
+    groups = summarise(path)['groups']
+    assert groups['all']['samples'] == 4
+    assert groups['all']['incorrect_words'] == 2
+    assert groups['all']['character_errors'] == distance('MOVE', 'Mov') + 1
+    assert groups['contains_digit']['exact_word_accuracy'] == 1
+    assert groups['length_9+']['samples'] == 1
+    with pytest.raises(ValueError, match='actual,predicted'):
+        invalid = tmp_path/'invalid.csv'
+        invalid.write_text('word,prediction\nx,x\n')
+        summarise(invalid)
+
+
+def test_iam_decoder_passes_greedy_and_beam_settings():
+    class Decoded:
+        def numpy(self): return np.array([[0, 1, -1]])
+    class Backend:
+        def ctc_decode(self, probabilities, lengths, **kwargs):
+            self.options = kwargs
+            assert list(lengths) == [3]
+            return [Decoded()], None
+    class Keras:
+        backend = Backend()
+    probabilities = np.zeros((1, 3, 3), dtype=np.float32)
+    assert decode(Keras, probabilities, ['a', 'b'], 'beam', 12) == ['ab']
+    assert Keras.backend.options == {'greedy': False, 'beam_width': 12}
+    assert decode(Keras, probabilities, ['a', 'b']) == ['ab']
+    assert Keras.backend.options['greedy'] is True

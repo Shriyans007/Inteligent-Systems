@@ -16,6 +16,7 @@ from cnn_model.models import _keras
 from preprocessing import prepare_mnist_digit
 from segmentation import crops_to_model_input, segment
 from text_recognition.common import CHAR_MODEL, CHAR_MAPPING, WORD_MODEL, WORD_VOCAB, prepare_character, prepare_word
+from text_recognition.emnist import model_paths
 
 MODEL_PATHS = {
     "cnn": Path("artifacts/cnn_mnist.keras"),
@@ -135,28 +136,35 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
 
 
 EXTENSION_PATHS = {"character": (CHAR_MODEL, CHAR_MAPPING), "word": (WORD_MODEL, WORD_VOCAB)}
+CHARACTER_PATHS = {key: model_paths(key)[1:] for key in MODEL_PATHS}
 _extension_models = {}
 
 
 @app.get("/api/extension-models")
 def extension_models() -> dict:
     return {"models": [{"key": key, "available": model.is_file() and meta.is_file()}
-                       for key, (model, meta) in EXTENSION_PATHS.items()]}
+                       for key, (model, meta) in EXTENSION_PATHS.items()],
+            "character_models": [{"key": key, "label": MODEL_LABELS[key],
+                                  "available": path.is_file() and meta.is_file()}
+                                 for key, (path, meta) in CHARACTER_PATHS.items()]}
 
 
-def get_extension_model(mode):
+def get_extension_model(mode, model_key="cnn"):
     if mode not in EXTENSION_PATHS:
         raise HTTPException(status_code=400, detail="Unknown recognition mode.")
-    path, metadata = EXTENSION_PATHS[mode]
+    if mode == "character" and model_key not in CHARACTER_PATHS:
+        raise HTTPException(status_code=400, detail="Unknown character model selection.")
+    path, metadata = CHARACTER_PATHS[model_key] if mode == "character" else EXTENSION_PATHS[mode]
     if not path.is_file() or not metadata.is_file():
-        raise HTTPException(status_code=503, detail=f"Train the {mode} model first; expected {path} and {metadata}.")
-    if mode not in _extension_models:
-        _extension_models[mode] = (_keras().models.load_model(path), json.loads(metadata.read_text()))
-    return _extension_models[mode]
+        raise HTTPException(status_code=503, detail=f"Train the {mode} {model_key if mode == 'character' else ''} model first; expected {path} and {metadata}.")
+    cache_key = (mode, model_key if mode == "character" else "word")
+    if cache_key not in _extension_models:
+        _extension_models[cache_key] = (_keras().models.load_model(path), json.loads(metadata.read_text()))
+    return _extension_models[cache_key]
 
 
 @app.post("/api/recognise-text")
-async def recognise_text(mode: str = Form(...), file: UploadFile = File(...)) -> dict:
+async def recognise_text(mode: str = Form(...), file: UploadFile = File(...), model: str = Form("cnn")) -> dict:
     if mode not in EXTENSION_PATHS:
         raise HTTPException(status_code=400, detail="Select character or word mode.")
     if file.content_type not in {"image/png", "image/jpeg", "image/bmp", "image/webp"}:
@@ -165,15 +173,15 @@ async def recognise_text(mode: str = Form(...), file: UploadFile = File(...)) ->
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="The image exceeds the 5 MB limit.")
     try:
-        model, mapping = get_extension_model(mode)
+        classifier, mapping = get_extension_model(mode, model)
         with Image.open(io.BytesIO(content)) as image:
             image.verify()
         with Image.open(io.BytesIO(content)) as image:
             prepared = prepare_character(image) if mode == "character" else prepare_word(image)
-        probabilities = model.predict(prepared[None, ...], verbose=0)
+        probabilities = classifier.predict(prepared[None, ...], verbose=0)
         if mode == "character":
             index = int(np.argmax(probabilities[0]))
-            return {"mode": mode, "text": mapping[str(index)], "confidence": float(probabilities[0][index])}
+            return {"mode": mode, "model": model, "model_label": MODEL_LABELS[model], "text": mapping[str(index)], "confidence": float(probabilities[0][index])}
         from text_recognition.iam import decode
         return {"mode": mode, "text": decode(_keras(), probabilities, mapping)[0]}
     except HTTPException:

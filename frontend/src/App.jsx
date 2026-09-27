@@ -13,7 +13,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState(fallbackModels);
   const [extensionModels, setExtensionModels] = useState([]);
+  const [characterModels, setCharacterModels] = useState(fallbackModels);
   const [selectedModel, setSelectedModel] = useState("cnn");
+  const [selectedCharacterModel, setSelectedCharacterModel] = useState("cnn");
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
@@ -28,6 +30,7 @@ export default function App() {
         const text = await extensions.json();
         setModels(digit.models);
         setExtensionModels(text.models);
+        setCharacterModels(text.character_models ?? fallbackModels);
         const preferred = digit.models.find((item) => item.key === digit.default_model && item.available);
         setSelectedModel((preferred ?? digit.models.find((item) => item.available))?.key ?? digit.default_model);
         setModelsLoaded(true);
@@ -50,6 +53,7 @@ export default function App() {
 
   const modelReady = mode === "numbers"
     ? models.some((item) => item.key === selectedModel && item.available)
+    : mode === "character" ? characterModels.some((item) => item.key === selectedCharacterModel && item.available)
     : extensionModels.some((item) => item.key === mode && item.available);
 
   function changeMode(next) {
@@ -104,7 +108,7 @@ export default function App() {
     } else if (mode === "numbers") files.forEach((file) => body.append("files", file));
     else body.append("file", files[0]);
     if (mode === "numbers") body.append("model", selectedModel);
-    else body.append("mode", mode);
+    else { body.append("mode", mode); if (mode === "character") body.append("model", selectedCharacterModel); }
     try {
       const response = await fetch(mode === "numbers" ? "/api/predict" : "/api/recognise-text", { method: "POST", body });
       const data = await response.json();
@@ -161,13 +165,17 @@ export default function App() {
             <select id="model-choice" value={selectedModel} disabled={loading} onChange={(event) => { setSelectedModel(event.target.value); setResult(null); setError(""); }}>
               {models.map((item) => <option key={item.key} value={item.key} disabled={!item.available}>{item.label}{item.available ? "" : " (not trained)"}</option>)}
             </select></label>}
+          {mode === "character" && <label className="model-selector" htmlFor="character-model-choice"><span>Select character model</span>
+            <select id="character-model-choice" value={selectedCharacterModel} disabled={loading} onChange={(event) => { setSelectedCharacterModel(event.target.value); setResult(null); setError(""); }}>
+              {characterModels.map((item) => <option key={item.key} value={item.key} disabled={!item.available}>{item.label}{item.available ? "" : " (not trained)"}</option>)}
+            </select></label>}
           {!modelReady && modelsLoaded && <p className="hint">Train the {mode === "numbers" ? "selected number" : mode} model first, then restart the backend and refresh this page.</p>}
           {!result ? <div className="empty-result">Your prediction will appear here.</div> : mode === "numbers" ? (
             <div className="result"><p>Model: {result.model_label}</p><p>Predicted number</p><strong>{result.number}</strong>
               <dl><div><dt>Average confidence</dt><dd>{(result.average_confidence * 100).toFixed(1)}%</dd></div><div><dt>Lowest digit</dt><dd>{(result.lowest_confidence * 100).toFixed(1)}%</dd></div></dl>
               <div className="digit-results">{result.predictions.map((item) => <span key={item.position}>{item.digit}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
             </div>
-          ) : <div className="result"><p>Predicted {mode}</p><strong>{result.text || "(no text detected)"}</strong>{mode === "character" && <p>Confidence: {(result.confidence * 100).toFixed(1)}%</p>}</div>}
+          ) : <div className="result"><p>Predicted {mode}{mode === "character" ? ` · ${result.model_label}` : ""}</p><strong>{result.text || "(no text detected)"}</strong>{mode === "character" && <p>Confidence: {(result.confidence * 100).toFixed(1)}%</p>}</div>}
           {error && <p className="error" role="alert">{error}</p>}
           <div className="result-actions">
             <button onClick={recognise} disabled={loading || !modelReady || (source === "upload" ? !files.length : !drawn)}>{loading ? "Recognising…" : `Recognise ${mode === "numbers" ? "number" : mode}`}</button>

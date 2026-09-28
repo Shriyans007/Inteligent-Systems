@@ -93,7 +93,7 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
             if len(content) > 5 * 1024 * 1024:
                 raise HTTPException(status_code=413, detail=f"{upload.filename} exceeds the 5 MB limit.")
             image = Image.open(io.BytesIO(content))
-            crops = segment(image)
+            crops = segment(image, split_touching=True)
             if crops:
                 prepared_images.extend(crops_to_model_input(crops))
                 filenames.extend(f"{upload.filename} #{crop.index + 1}" for crop in crops)

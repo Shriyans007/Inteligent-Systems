@@ -138,11 +138,45 @@ def segment_contours(binary_image: np.ndarray, min_area: int = 20):
     return boxes
 
 
+def _split_touching_box(binary: np.ndarray, box: Tuple[int, int, int, int]):
+    """Split a wide connected digit group only at a narrow ink bridge.
+
+    A single wide stroke or loop must stay intact, so require a wide bounding
+    box and substantial ink on either side of the proposed cut. This is only
+    used for the number route; it cannot resolve every pair of touching digits.
+    """
+    x, y, w, h = box
+    if w < 20 or w < 1.25 * h:
+        return [box]
+    ink = binary[y:y+h, x:x+w] > 0
+    projection = ink.sum(axis=0)
+    left_limit = max(1, int(w * 0.26))
+    right_limit = min(w - 1, int(w * 0.74))
+    if left_limit >= right_limit:
+        return [box]
+    cut = min(range(left_limit, right_limit), key=lambda col: (projection[col], abs(col - w/2)))
+    if projection[cut] > max(2, 0.10 * h) or projection[cut] > 0.4 * projection.max():
+        return [box]
+    left = ink[:, :cut]
+    right = ink[:, cut:]
+    if left.sum() < 0.18 * ink.sum() or right.sum() < 0.18 * ink.sum():
+        return [box]
+    pieces = []
+    for offset, part in ((0, left), (cut, right)):
+        rows, cols = np.where(part)
+        if not len(rows):
+            return [box]
+        pieces.extend(_split_touching_box(binary, (x + offset + int(cols.min()), y + int(rows.min()),
+                         int(np.ptp(cols)) + 1, int(np.ptp(rows)) + 1)))
+    return pieces
+
+
 def segment(
     image,
     method: Literal["connected_components", "contours"] = "connected_components",
     min_area: int = 20,
     padding: int = 2,
+    split_touching: bool = False,
 ) -> List[CharacterCrop]:
     """
     Main entry point. `image` can be a file path, PIL Image, or numpy array
@@ -165,13 +199,28 @@ def segment(
 
     boxes = _filter_boxes(boxes, binary.shape[:2], min_area=min_area)
     boxes = _merge_overlapping_boxes(boxes)
+    if split_touching:
+        separated = []
+        for box in boxes:
+            pieces = _split_touching_box(binary, box)
+            separated.extend(pieces)
+        boxes = separated
     boxes = sorted(boxes, key=lambda b: b[0])
 
     crops = []
     h_img, w_img = gray.shape[:2]
     for idx, (x, y, w, h) in enumerate(boxes):
-        x0, y0 = max(0, x - padding), max(0, y - padding)
-        x1, y1 = min(w_img, x + w + padding), min(h_img, y + h + padding)
+        left_padding = right_padding = padding
+        if split_touching:
+            # Close crops must not include strokes from their neighbours.
+            if idx:
+                prev_x, _, prev_w, _ = boxes[idx-1]
+                left_padding = min(padding, max(0, (x - prev_x - prev_w)//2))
+            if idx + 1 < len(boxes):
+                next_x, _, _, _ = boxes[idx+1]
+                right_padding = min(padding, max(0, (next_x - x - w)//2))
+        x0, y0 = max(0, x - left_padding), max(0, y - padding)
+        x1, y1 = min(w_img, x + w + right_padding), min(h_img, y + h + padding)
         crop = gray[y0:y1, x0:x1]  # <-- raw grayscale, NOT the binary mask
         crops.append(CharacterCrop(image=crop, bbox=(x, y, w, h), index=idx))
     return crops

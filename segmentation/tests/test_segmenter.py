@@ -84,6 +84,24 @@ def test_empty_canvas_returns_no_crops():
     assert crops == []
 
 
+def test_touching_digit_group_splits_at_narrow_bridge():
+    canvas = np.full((90, 130), 255, dtype=np.uint8)
+    cv2.rectangle(canvas, (15, 15), (44, 65), 0, 5)
+    cv2.rectangle(canvas, (55, 15), (84, 65), 0, 5)
+    cv2.line(canvas, (43, 40), (56, 40), 0, 2)
+    assert len(segment(canvas)) == 1  # original opt-out behaviour
+    crops = segment(canvas, split_touching=True)
+    assert len(crops) == 2
+    assert crops[0].bbox[0] < crops[1].bbox[0]
+    assert crops[0].image.max() == crops[1].image.max() == 255
+
+
+def test_single_wide_digit_is_not_split():
+    canvas = np.full((90, 130), 255, dtype=np.uint8)
+    cv2.putText(canvas, '7', (15, 72), cv2.FONT_HERSHEY_SIMPLEX, 2.1, 0, 5)
+    assert len(segment(canvas, split_touching=True)) == 1
+
+
 def test_windows_opencv_threshold_error_keeps_multiple_strokes(monkeypatch):
     canvas = np.full((80, 200), 255, dtype=np.uint8)
     cv2.line(canvas, (24, 12), (24, 65), 0, 6)

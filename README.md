@@ -379,7 +379,11 @@ npm.cmd run dev
 Open `http://localhost:5173`. Select Numbers, Character or Word and then
 Upload image or Draw here. Clear drawing erases the canvas; Reset clears the
 current result and input. Number model selection still uses the trained MNIST
-models, with CNN as the default. Character and Word show “Train the model
+models, with CNN as the default. Number mode can split some touching digits
+when their shared stroke is narrow, and keeps close crops from including their
+neighbours. Broadly joined or overlapping digits may still need to be drawn
+with more space; record actual-image results before claiming an accuracy gain.
+Character and Word show “Train the model
 first” until their `.keras` and mapping files exist; restart the backend and
 refresh the GUI after local training. Drawing uses the same API and image
 preprocessing as uploading in the selected mode. Character mode can join up to

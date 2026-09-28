@@ -93,3 +93,15 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   color: #1e478f;
   font-weight: 700;
 }
+
+/* The digit-chip rule also matches the bar spans; reset it for them */
+.prob-bars .prob-label,
+.prob-bars .prob-bar {
+  padding: 0;
+  border: 0;
+  font-weight: 400;
+}
+
+.prob-bars .prob-bar {
+  border-radius: 3px;
+}

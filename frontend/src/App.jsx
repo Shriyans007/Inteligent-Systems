@@ -111,8 +111,9 @@ export default function App() {
     else { body.append("mode", mode); if (mode === "character") body.append("model", selectedCharacterModel); }
     try {
       const response = await fetch(mode === "numbers" ? "/api/predict" : "/api/recognise-text", { method: "POST", body });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "Prediction failed.");
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.detail || `Prediction failed (API ${response.status}). Check the backend terminal.`);
+      if (!data) throw new Error("The API returned an invalid response. Check the backend terminal.");
       setResult(data);
     } catch (requestError) { setError(requestError.message); }
     finally { setLoading(false); }

@@ -1,4 +1,4 @@
-"""FastAPI service for handwritten digit predictions."""
+"""FastAPI service for handwritten digit, character, and word predictions."""
 
 from __future__ import annotations
 
@@ -177,11 +177,28 @@ async def recognise_text(mode: str = Form(...), file: UploadFile = File(...), mo
         with Image.open(io.BytesIO(content)) as image:
             image.verify()
         with Image.open(io.BytesIO(content)) as image:
-            prepared = prepare_character(image) if mode == "character" else prepare_word(image, width=int(classifier.input_shape[2]))
-        probabilities = classifier.predict(prepared[None, ...], verbose=0)
+            if mode == "character":
+                crops = segment(image)
+                if not crops:
+                    raise ValueError("The image does not contain visible writing.")
+                if len(crops) > 30:
+                    raise ValueError("Draw no more than 30 separated characters in one image.")
+                # Keep the original preprocessing for a single character; for
+                # several, each crop follows the same path before classification.
+                prepared = [prepare_character(image)] if len(crops) == 1 else [prepare_character(Image.fromarray(c.image)) for c in crops]
+            else:
+                prepared = prepare_word(image, width=int(classifier.input_shape[2]))
         if mode == "character":
-            index = int(np.argmax(probabilities[0]))
-            return {"mode": mode, "model": model, "model_label": MODEL_LABELS[model], "text": mapping[str(index)], "confidence": float(probabilities[0][index])}
+            probabilities = classifier.predict(np.stack(prepared), verbose=0)
+            predictions = []
+            for position, scores in enumerate(probabilities):
+                index = int(np.argmax(scores))
+                predictions.append({"position": position, "character": mapping[str(index)], "confidence": float(scores[index])})
+            return {"mode": mode, "model": model, "model_label": MODEL_LABELS[model],
+                    "text": "".join(item["character"] for item in predictions),
+                    "confidence": sum(item["confidence"] for item in predictions)/len(predictions),
+                    "predictions": predictions}
+        probabilities = classifier.predict(prepared[None, ...], verbose=0)
         from text_recognition.iam import decode
         return {"mode": mode, "text": decode(_keras(), probabilities, mapping)[0]}
     except HTTPException:

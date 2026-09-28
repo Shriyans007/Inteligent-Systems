@@ -382,7 +382,12 @@ current result and input. Number model selection still uses the trained MNIST
 models, with CNN as the default. Character and Word show “Train the model
 first” until their `.keras` and mapping files exist; restart the backend and
 refresh the GUI after local training. Drawing uses the same API and image
-preprocessing as uploading in the selected mode. Record labelled real-image
+preprocessing as uploading in the selected mode. Character mode can join up to
+30 separated handwritten letters and digits left to right in one image, using
+the selected EMNIST character model for each crop. It shows each character's
+confidence and the combined text. Touching characters may be merged and
+detached strokes may be split; it does not infer spaces or recognise full
+lines. Use Word mode for one connected handwritten word. Record labelled real-image
 predictions before claiming performance outside the held-out datasets.
 
 Dataset and method references: [NIST EMNIST](https://www.nist.gov/itl/products-and-services/emnist-dataset),

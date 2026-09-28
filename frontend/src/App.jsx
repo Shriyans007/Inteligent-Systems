@@ -139,7 +139,7 @@ export default function App() {
               <button key={key} className={mode === key ? "chosen" : "secondary-button"} onClick={() => changeMode(key)} disabled={loading}>{label}</button>
             ))}
           </div>
-          <p className="hint">{mode === "numbers" ? "Upload a handwritten number or several digit images from left to right." : mode === "character" ? "One letter or digit per image." : "One handwritten word per image. Spaces and full lines are not supported."}</p>
+          <p className="hint">{mode === "numbers" ? "Upload a handwritten number or several digit images from left to right." : mode === "character" ? "Draw or upload one or more separated letters and digits, left to right. Spaces and full lines are not supported." : "One handwritten word per image. Spaces and full lines are not supported."}</p>
           <div className="mode-options" role="group" aria-label="Input method">
             {[["upload", "Upload image"], ["draw", "Draw here"]].map(([key, label]) => (
               <button key={key} className={source === key ? "chosen" : "secondary-button"} disabled={loading} onClick={() => { setSource(key); setResult(null); setError(""); }}>{label}</button>
@@ -175,10 +175,13 @@ export default function App() {
               <dl><div><dt>Average confidence</dt><dd>{(result.average_confidence * 100).toFixed(1)}%</dd></div><div><dt>Lowest digit</dt><dd>{(result.lowest_confidence * 100).toFixed(1)}%</dd></div></dl>
               <div className="digit-results">{result.predictions.map((item) => <span key={item.position}>{item.digit}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
             </div>
-          ) : <div className="result"><p>Predicted {mode}{mode === "character" ? ` · ${result.model_label}` : ""}</p><strong>{result.text || "(no text detected)"}</strong>{mode === "character" && <p>Confidence: {(result.confidence * 100).toFixed(1)}%</p>}</div>}
+          ) : <div className="result"><p>Predicted {mode === "character" ? "characters" : "word"}{mode === "character" ? ` · ${result.model_label}` : ""}</p><strong>{result.text || "(no text detected)"}</strong>{mode === "character" && <>
+            <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>
+            <div className="digit-results">{result.predictions?.map((item) => <span key={item.position}>{item.character}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
+          </>}</div>}
           {error && <p className="error" role="alert">{error}</p>}
           <div className="result-actions">
-            <button onClick={recognise} disabled={loading || !modelReady || (source === "upload" ? !files.length : !drawn)}>{loading ? "Recognising…" : `Recognise ${mode === "numbers" ? "number" : mode}`}</button>
+            <button onClick={recognise} disabled={loading || !modelReady || (source === "upload" ? !files.length : !drawn)}>{loading ? "Recognising…" : `Recognise ${mode === "numbers" ? "number" : mode === "character" ? "characters" : "word"}`}</button>
             <button className="secondary-button" onClick={reset} disabled={loading || (!files.length && !drawn && !result && !error)}>Reset</button>
           </div>
         </article>

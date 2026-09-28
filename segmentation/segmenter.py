@@ -57,7 +57,22 @@ def _binary_for_detection(gray: np.ndarray) -> np.ndarray:
     light_gaps = gray.shape[1] > gray.shape[0] and np.any(np.min(gray, axis=0) > 230)
     dark_background = np.median(border) < 128 and not light_gaps
     foreground = cv2.THRESH_BINARY if dark_background else cv2.THRESH_BINARY_INV
-    _, binary = cv2.threshold(gray, 0, 255, foreground + cv2.THRESH_OTSU)
+    try:
+        _, binary = cv2.threshold(gray, 0, 255, foreground + cv2.THRESH_OTSU)
+    except cv2.error:
+        # Some Windows OpenCV builds raise an opaque C++ exception for
+        # threshold(), even on a valid uint8 canvas. Use the same Otsu
+        # criterion in NumPy so both recognition modes still work.
+        histogram = np.bincount(gray.ravel(), minlength=256).astype(np.float64)
+        counts = np.cumsum(histogram)
+        weighted = np.cumsum(histogram * np.arange(256))
+        valid = (counts > 0) & (counts < gray.size)
+        variance = np.zeros(256, dtype=np.float64)
+        variance[valid] = ((weighted[-1] * counts[valid] - weighted[valid] * gray.size) ** 2
+                           / (counts[valid] * (gray.size - counts[valid])))
+        threshold = int(np.argmax(variance))
+        mask = gray > threshold if dark_background else gray <= threshold
+        binary = np.where(mask, 255, 0).astype(np.uint8)
     return binary
 
 
@@ -93,7 +108,13 @@ def _merge_overlapping_boxes(boxes, overlap_thresh: float = 0.3):
 
 
 def segment_connected_components(binary_image: np.ndarray, min_area: int = 20):
-    num_labels, _, stats, _ = cv2.connectedComponentsWithStats(binary_image, connectivity=8)
+    try:
+        num_labels, _, stats, _ = cv2.connectedComponentsWithStats(binary_image, connectivity=8)
+    except cv2.error:
+        from skimage.measure import label, regionprops
+        regions = regionprops(label(binary_image > 0, connectivity=2))
+        return [(region.bbox[1], region.bbox[0], region.bbox[3] - region.bbox[1],
+                 region.bbox[2] - region.bbox[0]) for region in regions]
     boxes = []
     for label in range(1, num_labels):
         x = stats[label, cv2.CC_STAT_LEFT]

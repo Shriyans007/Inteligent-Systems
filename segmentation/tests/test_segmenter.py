@@ -84,6 +84,34 @@ def test_empty_canvas_returns_no_crops():
     assert crops == []
 
 
+def test_windows_opencv_threshold_error_keeps_multiple_strokes(monkeypatch):
+    canvas = np.full((80, 200), 255, dtype=np.uint8)
+    cv2.line(canvas, (24, 12), (24, 65), 0, 6)
+    cv2.line(canvas, (140, 12), (140, 65), 0, 6)
+    expected = [crop.bbox for crop in segment(canvas)]
+    assert len(expected) == 2
+
+    def unavailable(*args, **kwargs):
+        raise cv2.error('Unknown C++ exception from OpenCV code')
+
+    monkeypatch.setattr(cv2, 'threshold', unavailable)
+    assert [crop.bbox for crop in segment(canvas)] == expected
+
+
+def test_windows_opencv_connected_components_error_keeps_multiple_strokes(monkeypatch):
+    canvas = np.full((80, 200), 255, dtype=np.uint8)
+    cv2.line(canvas, (24, 12), (24, 65), 0, 6)
+    cv2.line(canvas, (140, 12), (140, 65), 0, 6)
+    expected = [crop.bbox for crop in segment(canvas)]
+    assert len(expected) == 2
+
+    def unavailable(*args, **kwargs):
+        raise cv2.error('Unknown C++ exception from OpenCV code')
+
+    monkeypatch.setattr(cv2, 'connectedComponentsWithStats', unavailable)
+    assert [crop.bbox for crop in segment(canvas)] == expected
+
+
 def test_real_nine_keeps_the_whole_digit_on_both_backgrounds():
     """The black hole within 9 must not be mistaken for the digit itself."""
     from pathlib import Path

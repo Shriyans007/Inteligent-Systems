@@ -53,3 +53,55 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .drawing-area canvas { display: block; width: 100%; height: auto; background: white; border: 2px solid #8aadd4; border-radius: 12px; touch-action: none; cursor: crosshair; }
 .drawing-area button { margin-top: 10px; }
 @media (max-width: 500px) { .mode-options { flex-wrap: wrap; } .mode-options button { min-width: 90px; } }
+
+/* Per-digit class probability bars */
+.prob-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+  width: 96px;
+}
+
+.prob-row {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+
+.prob-label {
+  font-size: 10px;
+  color: #64748b;
+  text-align: right;
+}
+
+.prob-bar {
+  height: 6px;
+  min-width: 1px;
+  border-radius: 3px;
+  background: #cbd5e1;
+  justify-self: start;
+  transition: width 150ms ease;
+}
+
+.prob-row.winner .prob-bar {
+  background: #1e478f;
+}
+
+.prob-row.winner .prob-label {
+  color: #1e478f;
+  font-weight: 700;
+}
+
+/* The digit-chip rule also matches the bar spans; reset it for them */
+.prob-bars .prob-label,
+.prob-bars .prob-bar {
+  padding: 0;
+  border: 0;
+  font-weight: 400;
+}
+
+.prob-bars .prob-bar {
+  border-radius: 3px;
+}

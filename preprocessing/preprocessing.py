@@ -1,5 +1,5 @@
 """Task 1 - image preprocessing."""
-
+from __future__ import annotations
 from pathlib import Path
 
 import numpy as np

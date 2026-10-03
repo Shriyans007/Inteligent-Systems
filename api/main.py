@@ -25,7 +25,7 @@ MODEL_PATHS = {
     "resnet": Path("artifacts/models/resnet/resnet_mnist.keras"),
 }
 MODEL_LABELS = {"cnn": "Shallow CNN", "mlp": "MLP", "lenet5": "LeNet-5", "resnet": "Small ResNet"}
-# Keep the previously documented environment override for known models.
+# Make sure you keep the previously documented environment override for known models.
 _configured_path = Path(os.getenv("HNRS_MODEL_PATH", str(MODEL_PATHS["cnn"])))
 DEFAULT_MODEL = next((key for key, path in MODEL_PATHS.items() if path == _configured_path), "cnn")
 

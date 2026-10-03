@@ -37,6 +37,7 @@ def test_emnist_mapping_and_idx(tmp_path):
 
 
 def test_iam_writer_split_and_word_aspect(tmp_path):
+    # Five fake writers let us check the split without needing IAM files here.
     root = tmp_path/'iam'
     (root/'ascii').mkdir(parents=True)
     (root/'ascii'/'forms.txt').write_text('\n'.join(f'a0{i}-000u w{i}' for i in range(5)))

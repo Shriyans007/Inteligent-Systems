@@ -22,6 +22,7 @@ export default function App() {
   const pointerRef = useRef(null);
   const previews = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
 
+  // Ask the API which saved models are actually present before enabling Recognise.
   useEffect(() => {
     Promise.all([fetch("/api/models"), fetch("/api/extension-models")])
       .then(async ([numbers, extensions]) => {
@@ -38,6 +39,8 @@ export default function App() {
       .catch(() => { setModelsLoaded(true); setError("Could not check the available models. Is the backend running?"); });
   }, []);
   useEffect(() => () => previews.forEach(URL.revokeObjectURL), [previews]);
+  // Start each canvas with a white background and black pen strokes. This also
+  // makes the exported PNG look like the uploaded handwriting images.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -51,6 +54,7 @@ export default function App() {
     setDrawn(false);
   }, [mode, source]);
 
+  // Number and character selectors have separate model lists; Word has one model.
   const modelReady = mode === "numbers"
     ? models.some((item) => item.key === selectedModel && item.available)
     : mode === "character" ? characterModels.some((item) => item.key === selectedCharacterModel && item.available)
@@ -68,12 +72,15 @@ export default function App() {
     setFiles(selected.slice(0, mode === "numbers" ? 30 : 1)); setResult(null); setError("");
   }
   function point(event) {
+    // The canvas is displayed at different sizes, but its drawing coordinates
+    // always use the same 720x220 bitmap.
     const bounds = canvasRef.current.getBoundingClientRect();
     return [(event.clientX - bounds.left) * canvasRef.current.width / bounds.width,
       (event.clientY - bounds.top) * canvasRef.current.height / bounds.height];
   }
   function startStroke(event) {
     const canvas = canvasRef.current;
+    // Keep this pointer even if a mouse or finger moves outside the canvas.
     canvas.setPointerCapture(event.pointerId);
     const [x, y] = point(event);
     const context = canvas.getContext("2d");
@@ -100,6 +107,8 @@ export default function App() {
     if (source === "draw" && !drawn) return setError("Draw something first.");
     setLoading(true); setError(""); setResult(null);
     const body = new FormData();
+    // The number endpoint accepts a list of images; the text endpoint accepts
+    // one image and the selected recognition mode.
     if (source === "draw") {
       const blob = await new Promise((resolve) => canvasRef.current.toBlob(resolve, "image/png"));
       if (!blob) { setLoading(false); return setError("Could not read the drawing."); }
@@ -111,6 +120,7 @@ export default function App() {
     else { body.append("mode", mode); if (mode === "character") body.append("model", selectedCharacterModel); }
     try {
       const response = await fetch(mode === "numbers" ? "/api/predict" : "/api/recognise-text", { method: "POST", body });
+      // A server error might be plain text, so leave a useful message in the UI.
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.detail || `Prediction failed (API ${response.status}). Check the backend terminal.`);
       if (!data) throw new Error("The API returned an invalid response. Check the backend terminal.");

@@ -26,7 +26,7 @@ def parse_args(argv=None):
         parser.error("--epochs and --batch-size must be positive")
     if args.output is None:
         args.output = Path("artifacts") / ("quick_check" if args.quick else "models") / args.model
-    # Do not accidentally replace the existing CNN/MLP model and comparison files.
+    # Keep these runs away from the original CNN and MLP files.
     if args.output.resolve() == Path("artifacts").resolve():
         parser.error("Choose a separate --output folder, such as artifacts/models/lenet5")
     return args
@@ -39,6 +39,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     model_path = args.output / f"{args.model}_mnist.keras"
     model.save(model_path)
+    # Record the split and run settings with the saved model for later comparison.
     record.update({
         "model_key": args.model,
         "quick": args.quick,

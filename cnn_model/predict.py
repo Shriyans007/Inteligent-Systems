@@ -18,6 +18,7 @@ class DigitPredictor:
         self.model = _keras().models.load_model(path)
 
     def predict(self, image_path: str | Path) -> tuple[int, float, np.ndarray]:
+        # Use the upload preprocessing before asking the saved model to predict.
         probabilities = self.model.predict(prepare_mnist_digit(str(image_path)), verbose=0)[0]
         digit = int(probabilities.argmax())
         return digit, float(probabilities[digit]), probabilities

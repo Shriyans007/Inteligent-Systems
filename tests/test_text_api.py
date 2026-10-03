@@ -29,6 +29,7 @@ def test_extension_availability_and_character_route(tmp_path, monkeypatch):
         response = client.post('/api/recognise-text', data={'mode': 'character'}, files={'file': ('b.png', image.getvalue(), 'image/png')})
         assert response.status_code == 200 and response.json()['text'] == 'B' and response.json()['model'] == 'cnn'
         assert response.json()['predictions'][0]['character'] == 'B'
+        # Two strokes should come back in their left-to-right order.
         multiple = Image.new('L', (160, 70), 255)
         drawing = ImageDraw.Draw(multiple)
         drawing.line((20, 10, 30, 55), fill=0, width=5)

@@ -58,6 +58,7 @@ def read_samples(root, validate_images=False):
     forms = root / 'ascii' / 'forms.txt'
     if not forms.is_file():
         raise FileNotFoundError(f'IAM writer IDs missing: {forms}. Extract ascii.tgz; writer-independent splitting requires forms.txt.')
+    # The form ID links each word image back to the person who wrote it.
     writers = {}
     for line in forms.read_text(encoding='utf-8').splitlines():
         if not line or line.startswith('#'): continue
@@ -70,6 +71,7 @@ def read_samples(root, validate_images=False):
         if not line or line.startswith('#'): continue
         identifier, status, transcription, _ = parse_word_record(line)
         if status in {'er', 'err'}: continue
+        # IAM stores word images under the page/form portion of the word ID.
         form = '-'.join(identifier.split('-')[:2])
         if form not in writers: raise ValueError(f'Missing writer ID for form {form}')
         section = identifier.split('-')[0]
@@ -80,6 +82,7 @@ def read_samples(root, validate_images=False):
         if transcription and transcription != '#': samples.append((path, transcription, writers[form]))
     if missing: print(f'Skipped {missing} word entries with missing PNG images.')
     if validate_images:
+        # Catch blank and broken PNGs before a long training run reaches them.
         valid, invalid = [], []
         for path, transcription, writer in samples:
             try:
@@ -99,6 +102,7 @@ def read_samples(root, validate_images=False):
 
 
 def split_writers(samples):
+    # Split writer IDs first, then put each writer's words in one group only.
     rng = np.random.default_rng(42)
     ids = sorted({writer for _, _, writer in samples})
     if len(ids) < 3: raise ValueError('At least three distinct writers are needed for train/validation/test.')
@@ -131,6 +135,7 @@ def build_model(classes, width=WIDTH):
     x = keras.layers.Conv2D(32, 3, padding='same', activation='relu')(x)
     x = keras.layers.MaxPooling2D((2, 2))(x)
     x = keras.layers.Conv2D(64, 3, padding='same', activation='relu')(x)
+    # Turn image width into time steps for the recurrent layers and CTC loss.
     x = keras.layers.Permute((2, 1, 3))(x)
     x = keras.layers.Reshape((width//4, (HEIGHT//4)*64))(x)
     x = keras.layers.Bidirectional(keras.layers.LSTM(64, return_sequences=True))(x)
@@ -161,6 +166,7 @@ def batches(samples, vocab, batch_size, shuffle=False, width=WIDTH, augment=Fals
                 prepared = prepare_word(image, width=width)
             images.append(shift_word(prepared, rng) if augment else prepared)
             labels.append([vocab.index(char) for char in label])
+        # Pad labels for the batch, but pass their real lengths into CTC.
         padded = np.zeros((len(labels), max(map(len, labels))), dtype=np.int32)
         for i, label in enumerate(labels): padded[i, :len(label)] = label
         yield np.array(images, dtype=np.float32), padded, np.array([len(x) for x in labels], dtype=np.int32), [x[1] for x in current]
@@ -178,6 +184,7 @@ def ctc_loss(keras, labels, probabilities, lengths, weights=None):
     input_lengths = tf.fill((batch, 1), tf.shape(probabilities)[1])
     losses = keras.backend.ctc_batch_cost(labels, probabilities, input_lengths,
                                           tf.reshape(lengths, (-1, 1)))
+    # The balanced variant weights training words; validation CTC stays unweighted.
     if weights is None:
         return tf.reduce_mean(losses)
     weights = tf.reshape(tf.convert_to_tensor(weights, dtype=losses.dtype), (-1, 1))
@@ -185,6 +192,7 @@ def ctc_loss(keras, labels, probabilities, lengths, weights=None):
 
 
 def decode(keras, probabilities, vocab, decoder='greedy', beam_width=10):
+    # CTC removes blank steps and repeats before converting indexes to text.
     lengths = np.full((len(probabilities),), probabilities.shape[1])
     decoded, _ = keras.backend.ctc_decode(probabilities, lengths,
                                           greedy=decoder == 'greedy', beam_width=beam_width)
@@ -192,6 +200,7 @@ def decode(keras, probabilities, vocab, decoder='greedy', beam_width=10):
 
 
 def distance(a, b):
+    # Levenshtein distance counts substitutions, insertions and deletions.
     previous = list(range(len(b)+1))
     for i, left in enumerate(a, 1):
         current = [i]
@@ -214,6 +223,7 @@ def evaluate(model, samples, vocab, output, name='test', decoder='greedy', beam_
     output.mkdir(parents=True, exist_ok=True)
     with (output/f'{name}_predictions.csv').open('w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file); writer.writerow(['actual', 'predicted']); writer.writerows(rows)
+    # One different character affects CER; any difference makes a word wrong.
     metrics = {'samples': len(rows), 'cer': errors/characters, 'wer': wrong/len(rows),
                'exact_word_accuracy': 1-wrong/len(rows)}
     (output/f'{name}_results.json').write_text(json.dumps(metrics, indent=2))
@@ -252,6 +262,7 @@ def main():
             print(f'  previously {old!r} -> corrected {corrected!r}')
         return
     if args.action == 'evaluate-examples':
+        # A labelled manifest can check handwriting collected outside IAM.
         if not args.manifest: parser.error('--manifest is required for evaluate-examples')
         if not model_path.is_file(): raise FileNotFoundError(f'Train the IAM word model first: {model_path}')
         samples = []
@@ -298,6 +309,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     (output/WORD_VOCAB.name).write_text(json.dumps(vocab, indent=2))
     best, patience = float('inf'), 0
+    # Only the training batches use these small, seeded shifts.
     augmentation_rng = np.random.default_rng(42)
     for epoch in range(min(args.epochs, 2) if args.quick else args.epochs):
         losses = []
@@ -314,12 +326,14 @@ def main():
             validation.append(float(ctc_loss(keras, labels, model(images, training=False), lengths)))
         score = float(np.mean(validation))
         print(f'Epoch {epoch+1}: train CTC {np.mean(losses):.4f}, validation CTC {score:.4f}')
+        # Save the validation winner, even if the last epoch is worse.
         if score < best:
             best, patience = score, 0
             model.save(model_path)
         else:
             patience += 1
             if patience >= 3: break
+    # Keep experimental variants off the test split until validation is read.
     if args.variant == 'v1' and not args.augment:
         evaluate(keras.models.load_model(model_path), test, vocab, output)
     else:

@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 def collect(baseline: Path, lenet: Path, resnet: Path):
+    # Read measured outputs instead of rerunning any training here.
     old = json.loads(baseline.read_text(encoding="utf-8"))
     if not isinstance(old, list) or {row.get("model") for row in old} != {"MLP baseline", "CNN selected"}:
         raise ValueError("Baseline comparison must contain the MLP and CNN results")
@@ -19,7 +20,7 @@ def collect(baseline: Path, lenet: Path, resnet: Path):
         raise ValueError("Full-run comparison requires 60,000 train and 10,000 test samples")
     if new[0]["seed"] != new[1]["seed"] or new[0]["batch_size"] != new[1]["batch_size"]:
         raise ValueError("LeNet-5 and ResNet must use the same seed and batch size")
-    # Legacy comparison.json has no run metadata: verify its provenance manually.
+    # The older comparison file has no run metadata, so check its provenance.
     return old + new
 
 

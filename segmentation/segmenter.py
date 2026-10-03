@@ -60,9 +60,8 @@ def _binary_for_detection(gray: np.ndarray) -> np.ndarray:
     try:
         _, binary = cv2.threshold(gray, 0, 255, foreground + cv2.THRESH_OTSU)
     except cv2.error:
-        # Some Windows OpenCV builds raise an opaque C++ exception for
-        # threshold(), even on a valid uint8 canvas. Use the same Otsu
-        # criterion in NumPy so both recognition modes still work.
+        # OpenCV sometimes fails here on Windows. The NumPy path still finds
+        # the ink using Otsu's threshold.
         histogram = np.bincount(gray.ravel(), minlength=256).astype(np.float64)
         counts = np.cumsum(histogram)
         weighted = np.cumsum(histogram * np.arange(256))
@@ -149,6 +148,7 @@ def _split_touching_box(binary: np.ndarray, box: Tuple[int, int, int, int]):
     if w < 20 or w < 1.25 * h:
         return [box]
     ink = binary[y:y+h, x:x+w] > 0
+    # A narrow column near the middle can be the join between two digits.
     projection = ink.sum(axis=0)
     left_limit = max(1, int(w * 0.26))
     right_limit = min(w - 1, int(w * 0.74))
@@ -159,6 +159,7 @@ def _split_touching_box(binary: np.ndarray, box: Tuple[int, int, int, int]):
         return [box]
     left = ink[:, :cut]
     right = ink[:, cut:]
+    # Avoid turning a long tail or stray mark into a separate digit.
     if left.sum() < 0.18 * ink.sum() or right.sum() < 0.18 * ink.sum():
         return [box]
     pieces = []

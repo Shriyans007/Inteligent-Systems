@@ -85,6 +85,7 @@ def test_empty_canvas_returns_no_crops():
 
 
 def test_touching_digit_group_splits_at_narrow_bridge():
+    # A thin bridge joins two otherwise separate digit-shaped marks.
     canvas = np.full((90, 130), 255, dtype=np.uint8)
     cv2.rectangle(canvas, (15, 15), (44, 65), 0, 5)
     cv2.rectangle(canvas, (55, 15), (84, 65), 0, 5)

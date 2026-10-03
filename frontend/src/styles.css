@@ -108,3 +108,18 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .prob-bars .prob-bar {
   border-radius: 3px;
 }
+
+/* Confidence threshold control */
+.threshold-control {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  color: #53647d;
+  font-size: .9rem;
+  font-weight: 700;
+}
+
+.threshold-control input[type="range"] {
+  width: 100%;
+  accent-color: #1d63a8;
+}

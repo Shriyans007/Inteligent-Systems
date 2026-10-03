@@ -123,3 +123,14 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   width: 100%;
   accent-color: #1d63a8;
 }
+
+/* Digits below the confidence threshold */
+.digit-results span.uncertain {
+  border-color: #e0a02a;
+  background: #fff8e8;
+}
+
+.digit-results span.uncertain small {
+  color: #8a5a00;
+  font-weight: 700;
+}

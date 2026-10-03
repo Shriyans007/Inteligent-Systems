@@ -17,6 +17,7 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState("cnn");
   const [selectedCharacterModel, setSelectedCharacterModel] = useState("cnn");
   const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [threshold, setThreshold] = useState(0.5);
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
   const pointerRef = useRef(null);
@@ -180,6 +181,12 @@ export default function App() {
             <select id="character-model-choice" value={selectedCharacterModel} disabled={loading} onChange={(event) => { setSelectedCharacterModel(event.target.value); setResult(null); setError(""); }}>
               {characterModels.map((item) => <option key={item.key} value={item.key} disabled={!item.available}>{item.label}{item.available ? "" : " (not trained)"}</option>)}
             </select></label>}
+          {mode === "numbers" && <label className="threshold-control" htmlFor="threshold-choice">
+            <span>Flag digits below {(threshold * 100).toFixed(0)}% confidence</span>
+            <input id="threshold-choice" type="range" min="0" max="100" step="1"
+              value={Math.round(threshold * 100)} disabled={loading}
+              onChange={(event) => setThreshold(Number(event.target.value) / 100)} />
+          </label>}
           {!modelReady && modelsLoaded && <p className="hint">Train the {mode === "numbers" ? "selected number" : mode} model first, then restart the backend and refresh this page.</p>}
           {!result ? <div className="empty-result">Your prediction will appear here.</div> : mode === "numbers" ? (
             <div className="result"><p>Model: {result.model_label}</p><p>Predicted number</p><strong>{result.number}</strong>

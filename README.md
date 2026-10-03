@@ -397,3 +397,12 @@ predictions before claiming performance outside the held-out datasets.
 Dataset and method references: [NIST EMNIST](https://www.nist.gov/itl/products-and-services/emnist-dataset),
 [IAM Handwriting Database](https://fki.tic.heia-fr.ch/databases/iam-handwriting-database),
 [Keras IAM word-recognition example](https://keras.io/examples/vision/handwriting_recognition/).
+
+## Requirements
+
+- **Python 3.10–3.13.** TensorFlow has no release for 3.14 yet, and `preprocessing.py`
+  uses `X | Y` type-annotation syntax that requires 3.10 or newer.
+- **Node.js 18 or newer** for the React interface.
+
+Create the environment with a supported interpreter explicitly, for example
+`py -3.12 -m venv .venv` on Windows or `python3.12 -m venv .venv` on macOS.

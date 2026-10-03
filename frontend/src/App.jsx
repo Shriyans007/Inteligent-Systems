@@ -192,7 +192,7 @@ export default function App() {
             <div className="result"><p>Model: {result.model_label}</p><p>Predicted number</p><strong>{result.number}</strong>
               <dl><div><dt>Average confidence</dt><dd>{(result.average_confidence * 100).toFixed(1)}%</dd></div><div><dt>Lowest digit</dt><dd>{(result.lowest_confidence * 100).toFixed(1)}%</dd></div></dl>
               <div className="digit-results">{result.predictions.map((item) => (
-                <span key={item.position}>
+                <span key={item.position} className={item.confidence < threshold ? "uncertain" : undefined}>
                   {item.digit}
                   <small>{(item.confidence * 100).toFixed(1)}%</small>
                   <div className="prob-bars">

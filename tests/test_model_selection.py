@@ -20,6 +20,7 @@ class StubClassifier:
 
 
 def test_selects_requested_model_and_rejects_missing_or_unknown(tmp_path, monkeypatch):
+    # Stub predictions show whether the API used the model selected in the request.
     paths = {key: tmp_path / f"{key}.keras" for key in api.MODEL_PATHS}
     paths["cnn"].touch()
     paths["resnet"].touch()

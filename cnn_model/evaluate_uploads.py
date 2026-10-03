@@ -10,8 +10,7 @@ from pathlib import Path
 
 
 def evaluate_manifest(manifest: Path, output: Path):
-    # TestClient executes the same /api/predict route used by React, including
-    # segmentation, shared preprocessing and the default trained CNN.
+    # Call the same API route as React to include segmentation and preprocessing.
     from fastapi.testclient import TestClient
     from api.main import app
 
@@ -29,6 +28,7 @@ def evaluate_manifest(manifest: Path, output: Path):
             path = Path(row["image"])
             if not path.is_absolute():
                 path = manifest.parent / path
+            # Labels here can be multi-digit strings, including a leading zero.
             label = row["label"].strip()
             if not label or not label.isdigit():
                 raise ValueError(f"Invalid digit label: {label!r}")

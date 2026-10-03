@@ -73,6 +73,7 @@ def centre_digit_by_mass(image: Image.Image) -> Image.Image:
     if total_ink == 0:
         return image
 
+    # Give darker strokes more weight when finding the centre of the digit.
     y_positions, x_positions = np.indices(pixels.shape)
     centre_x = float((x_positions * pixels).sum() / total_ink)
     centre_y = float((y_positions * pixels).sum() / total_ink)

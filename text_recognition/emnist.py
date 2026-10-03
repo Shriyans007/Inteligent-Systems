@@ -32,6 +32,7 @@ def check_data(folder):
 
 
 def read_idx(path):
+    # IDX stores the image shape in big-endian integers before the pixel bytes.
     with gzip.open(path, "rb") as file:
         header = file.read(4)
         if len(header) != 4 or header[:2] != b"\0\0" or header[2] != 8:
@@ -44,6 +45,7 @@ def read_idx(path):
 
 
 def read_mapping(path):
+    # Use the dataset's actual label-to-character file, including case.
     entries = [line.split() for line in path.read_text().splitlines() if line.strip()]
     mapping = {int(key): chr(int(code)) for key, code in entries}
     if set(mapping) != set(range(62)) or len(set(mapping.values())) != 62:
@@ -71,6 +73,7 @@ def evaluate(model, x, y, mapping, output):
     x = x.astype(np.float32)/255
     loss, accuracy = model.evaluate(x, y, batch_size=256, verbose=0)
     pred = model.predict(x, batch_size=256, verbose=0).argmax(axis=1)
+    # Fixed label order makes both CSVs line up with mapping.json.
     cm = confusion_matrix(y, pred, labels=np.arange(62))
     with (output/"confusion_matrix.csv").open("w", newline="") as file:
         writer = csv.writer(file); writer.writerow(["actual/predicted"]+[mapping[i] for i in range(62)])
@@ -93,6 +96,7 @@ def main():
     parser.add_argument("--quick", action="store_true", help="Use small train/test subsets in a separate output directory")
     args = parser.parse_args()
     if args.action == "compare":
+        # Collect files from finished runs; this command does not retrain models.
         rows = []
         for name in BUILDERS:
             folder, _, _ = model_paths(name, args.output)
@@ -124,6 +128,7 @@ def main():
         return
     x, y = load(args.data, "train")
     if args.action == "preview":
+        # A grid of upright examples makes an orientation mistake easy to spot.
         from PIL import Image, ImageDraw
         output.mkdir(parents=True, exist_ok=True)
         canvas = Image.new("L", (8*84, 4*98), 255)
@@ -141,11 +146,13 @@ def main():
     if args.quick: order = order[:4096]
     cut = int(len(order)*0.9)
     train, validation = order[:cut], order[cut:]
+    # Reuse the four MNIST layouts, but build fresh weights with 62 outputs.
     model = compile_model(BUILDERS[args.model](62))
     output.mkdir(parents=True, exist_ok=True)
     mapping_path.write_text(json.dumps(mapping, indent=2))
     keras = _keras()
     class Batches(keras.utils.PyDataset):
+        # Convert one batch at a time so the large train set stays as uint8.
         def __init__(self, indices):
             super().__init__()
             self.indices = indices
@@ -157,6 +164,7 @@ def main():
               epochs=args.epochs if not args.quick else min(args.epochs, 2),
               callbacks=[_keras().callbacks.EarlyStopping(patience=3, restore_best_weights=True)])
     model.save(model_path)
+    # The held-out test split is opened only after fitting is finished.
     test_x, test_y = load(args.data, "test")
     if args.quick: test_x, test_y = test_x[:512], test_y[:512]
     evaluate(model, test_x, test_y, mapping, output)

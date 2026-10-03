@@ -19,6 +19,7 @@ def evaluate_expression(expression: str) -> int | float:
     except SyntaxError as exc:
         raise ValueError("The recognised symbols do not form a valid expression.") from exc
 
+    # Only these node types can be evaluated; other Python syntax is rejected.
     def visit(node):
         if isinstance(node, ast.Expression):
             return visit(node.body)

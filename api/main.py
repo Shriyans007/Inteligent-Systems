@@ -18,6 +18,7 @@ from segmentation import crops_to_model_input, segment
 from text_recognition.common import CHAR_MODEL, CHAR_MAPPING, WORD_MODEL, WORD_VOCAB, prepare_character, prepare_word
 from text_recognition.emnist import model_paths
 
+# These paths belong to the original ten-digit classifiers.
 MODEL_PATHS = {
     "cnn": Path("artifacts/cnn_mnist.keras"),
     "mlp": Path("artifacts/mlp_mnist.keras"),
@@ -38,6 +39,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Loading a Keras file takes time, so keep each model around after its first use.
 _models = {}
 
 
@@ -93,6 +95,8 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
             if len(content) > 5 * 1024 * 1024:
                 raise HTTPException(status_code=413, detail=f"{upload.filename} exceeds the 5 MB limit.")
             image = Image.open(io.BytesIO(content))
+            # The segmenter handles a whole number; each crop then gets the
+            # same 28x28 input preparation as an uploaded single digit.
             crops = segment(image, split_touching=True)
             if crops:
                 prepared_images.extend(crops_to_model_input(crops))
@@ -135,6 +139,8 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
     }
 
 
+# Character models classify individual crops. The word model reads the full
+# image, so it has its own saved weights and vocabulary.
 EXTENSION_PATHS = {"character": (CHAR_MODEL, CHAR_MAPPING), "word": (WORD_MODEL, WORD_VOCAB)}
 CHARACTER_PATHS = {key: model_paths(key)[1:] for key in MODEL_PATHS}
 _extension_models = {}
@@ -174,6 +180,7 @@ async def recognise_text(mode: str = Form(...), file: UploadFile = File(...), mo
         raise HTTPException(status_code=413, detail="The image exceeds the 5 MB limit.")
     try:
         classifier, mapping = get_extension_model(mode, model)
+        # Verify the upload before opening it again for preprocessing.
         with Image.open(io.BytesIO(content)) as image:
             image.verify()
         with Image.open(io.BytesIO(content)) as image:
@@ -183,8 +190,8 @@ async def recognise_text(mode: str = Form(...), file: UploadFile = File(...), mo
                     raise ValueError("The image does not contain visible writing.")
                 if len(crops) > 30:
                     raise ValueError("Draw no more than 30 separated characters in one image.")
-                # Keep the original preprocessing for a single character; for
-                # several, each crop follows the same path before classification.
+                # Use the full image for one character, or classify separated
+                # crops in left-to-right order for a longer drawing.
                 prepared = [prepare_character(image)] if len(crops) == 1 else [prepare_character(Image.fromarray(c.image)) for c in crops]
             else:
                 prepared = prepare_word(image, width=int(classifier.input_shape[2]))

@@ -35,6 +35,7 @@ def load_mnist(quick: bool, seed: int):
     except AttributeError:
         pass
 
+    # The quick run uses fewer images from each original MNIST split.
     (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
     if quick:
         x_train, y_train = x_train[:10000], y_train[:10000]
@@ -49,6 +50,7 @@ def train_one(name, builder, data, args):
     keras = _keras()
     x_train, y_train, x_test, y_test = data
     model = compile_model(builder())
+    # Stop when validation loss stalls, then return to the best saved weights.
     callbacks = [
         keras.callbacks.EarlyStopping(monitor="val_loss", patience=2, restore_best_weights=True),
         keras.callbacks.ReduceLROnPlateau(monitor="val_loss", patience=1, factor=0.5),
@@ -60,6 +62,7 @@ def train_one(name, builder, data, args):
     )
     loss, accuracy = model.evaluate(x_test, y_test, verbose=0)
     elapsed = time.perf_counter() - started
+    # The per-digit figures show which classes the overall accuracy hides.
     predictions = model.predict(x_test, verbose=0).argmax(axis=1)
     per_class = {
         str(digit): float((predictions[y_test == digit] == digit).mean())
@@ -79,6 +82,7 @@ def main() -> None:
     data = load_mnist(args.quick, args.seed)
     args.output.mkdir(parents=True, exist_ok=True)
 
+    # Both baselines use the same loaded data and training settings.
     results = []
     for name, builder in (("MLP baseline", build_mlp), ("CNN selected", build_cnn)):
         model, history, record = train_one(name, builder, data, args)

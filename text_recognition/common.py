@@ -7,6 +7,7 @@ CHAR_MODEL = Path("artifacts/text/character/emnist_cnn.keras")
 WORD_MODEL = Path("artifacts/text/word/iam_crnn.keras")
 CHAR_MAPPING = Path("artifacts/text/character/mapping.json")
 WORD_VOCAB = Path("artifacts/text/word/vocabulary.json")
+# Words need room across the image; a whole word should not be shrunk to 28x28.
 HEIGHT, WIDTH = 64, 384
 
 
@@ -28,6 +29,7 @@ def prepare_word(image, width=WIDTH):
     if not mask.any():
         raise ValueError("The image does not contain visible writing.")
     yy, xx = np.where(mask)
+    # Crop empty margins first, then resize without stretching the writing.
     cropped = gray.crop((max(0, xx.min()-3), max(0, yy.min()-3),
                          min(gray.width, xx.max()+4), min(gray.height, yy.max()+4)))
     scale = min((width-16)/cropped.width, (HEIGHT-12)/cropped.height)
@@ -35,4 +37,5 @@ def prepare_word(image, width=WIDTH):
     resized = cropped.resize(size, Image.Resampling.LANCZOS)
     canvas = Image.new("L", (width, HEIGHT), 255)
     canvas.paste(resized, (8, (HEIGHT-size[1])//2))
+    # The network sees bright ink on a dark background after this inversion.
     return (1 - np.asarray(canvas, dtype=np.float32)/255)[..., None]

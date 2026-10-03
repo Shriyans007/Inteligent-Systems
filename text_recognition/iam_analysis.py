@@ -28,6 +28,7 @@ def summarise(path):
             actual, predicted = row["actual"], row["predicted"]
             if actual is None or predicted is None:
                 raise ValueError("A prediction row has a missing actual or predicted field.")
+            # A row can belong to several groups, such as long and all capitals.
             add("all", actual, predicted)
             add(f"length_{'1-4' if len(actual) <= 4 else '5-8' if len(actual) <= 8 else '9+'}", actual, predicted)
             if actual.isupper() and any(c.isalpha() for c in actual): add("all_capitals", actual, predicted)
@@ -36,6 +37,7 @@ def summarise(path):
             if actual != predicted: mistakes[(actual, predicted)] += 1
     if not groups:
         raise ValueError("The predictions CSV contains no rows.")
+    # Edit distance counts character mistakes; exact match counts whole words.
     for entry in groups.values():
         entry["cer"] = entry["character_errors"]/entry["reference_characters"] if entry["reference_characters"] else None
         entry["exact_word_accuracy"] = 1-entry["incorrect_words"]/entry["samples"]

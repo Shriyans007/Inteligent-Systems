@@ -17,6 +17,7 @@ def _keras():
 def build_mlp(num_classes: int = 10):
     """Return a simple dense baseline for a fair comparison with the CNN."""
     keras = _keras()
+    # Flattening removes the image layout, giving us a plain dense baseline.
     return keras.Sequential(
         [
             keras.layers.Input((28, 28, 1)),
@@ -32,6 +33,7 @@ def build_mlp(num_classes: int = 10):
 def build_cnn(num_classes: int = 10):
     """Return the selected CNN architecture for handwritten digit recognition."""
     keras = _keras()
+    # num_classes is 10 for MNIST and 62 when this layout is trained on EMNIST.
     return keras.Sequential(
         [
             keras.layers.Input((28, 28, 1)),
@@ -81,6 +83,7 @@ def _residual_block(keras, inputs, filters: int, stride: int = 1):
     x = keras.layers.Conv2D(filters, 3, padding="same", use_bias=False)(x)
     x = keras.layers.BatchNormalization()(x)
     if stride != 1 or inputs.shape[-1] != filters:
+        # Match the shortcut's size before adding it to the convolution path.
         shortcut = keras.layers.Conv2D(filters, 1, strides=stride, use_bias=False)(inputs)
         shortcut = keras.layers.BatchNormalization()(shortcut)
     x = keras.layers.Add()([x, shortcut])
@@ -110,6 +113,7 @@ def build_resnet(num_classes: int = 10):
 def compile_model(model, learning_rate: float = 1e-3):
     """Compile a classifier with settings shared by both experiments."""
     keras = _keras()
+    # All four classifiers predict a single class index per image.
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
         loss="sparse_categorical_crossentropy",

@@ -26,6 +26,31 @@ MODEL_PATHS = {
     "resnet": Path("artifacts/models/resnet/resnet_mnist.keras"),
 }
 MODEL_LABELS = {"cnn": "Shallow CNN", "mlp": "MLP", "lenet5": "LeNet-5", "resnet": "Small ResNet"}
+
+ACCURACY_SOURCES = {
+    "cnn": (Path("artifacts/comparison.json"), "CNN selected"),
+    "mlp": (Path("artifacts/comparison.json"), "MLP baseline"),
+    "lenet5": (Path("artifacts/models/lenet5/result.json"), None),
+    "resnet": (Path("artifacts/models/resnet/result.json"), None),
+}
+
+
+def model_accuracy(model_key: str):
+    """Read the saved test accuracy so the GUI can set a threshold from it."""
+    path, label = ACCURACY_SOURCES.get(model_key, (None, None))
+    if path is None or not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    records = data if isinstance(data, list) else [data]
+    for row in records:
+        if label is None or row.get("model") == label:
+            value = row.get("test_accuracy")
+            return float(value) if value is not None else None
+    return None
+
 # Make sure you keep the previously documented environment override for known models.
 _configured_path = Path(os.getenv("HNRS_MODEL_PATH", str(MODEL_PATHS["cnn"])))
 DEFAULT_MODEL = next((key for key, path in MODEL_PATHS.items() if path == _configured_path), "cnn")
@@ -74,7 +99,8 @@ def health() -> dict[str, str | bool]:
 def available_models() -> dict:
     """Let the GUI disable models that have not been trained locally."""
     return {"default_model": DEFAULT_MODEL,
-            "models": [{"key": key, "label": MODEL_LABELS[key], "available": path.is_file()}
+            "models": [{"key": key, "label": MODEL_LABELS[key], "available": path.is_file(),
+                        "accuracy": model_accuracy(key)}
                        for key, path in MODEL_PATHS.items()]}
 
 

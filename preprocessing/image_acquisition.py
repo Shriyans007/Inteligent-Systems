@@ -6,6 +6,7 @@ Gets the input "number" image in one of two ways:
   2. Load a number image directly from a single image file.
 """
 
+import re
 from pathlib import Path
 from PIL import Image
 
@@ -18,19 +19,26 @@ def load_number_image(path: str) -> Image.Image:
     return Image.open(path)
 
 
+def _natural_sort_key(path: Path):
+    """Sort key that reads the numbers in a filename as numbers, so digit_10.png
+    comes after digit_9.png instead of straight after digit_1.png."""
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", path.name)]
+
+
 def build_number_from_digits(folder: str, height: int = 28, spacing: int = 4) -> Image.Image:
     """
     Combine individual digit images in a folder into one horizontal number image.
-    Files are read in sorted filename order, so name them so that order matches
-    the number, e.g. digit_0.png, digit_1.png, digit_2.png -> "012".
+    Files are read in filename order, so name them so that order matches the
+    number, e.g. digit_0.png, digit_1.png, digit_2.png -> "012". Numbers in the
+    names are compared as numbers, so digit_10.png still comes after digit_9.png.
     """
     folder = Path(folder)
     if not folder.exists():
         raise FileNotFoundError(f"Cannot find folder at {folder}")
 
     paths = sorted(
-        p for p in folder.iterdir()
-        if p.suffix.lower() in (".png", ".jpg", ".jpeg")
+        (p for p in folder.iterdir() if p.suffix.lower() in (".png", ".jpg", ".jpeg")),
+        key=_natural_sort_key,
     )
     if not paths:
         raise FileNotFoundError(f"No digit images found in {folder}")

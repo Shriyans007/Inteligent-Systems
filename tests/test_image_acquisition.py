@@ -55,3 +55,15 @@ def test_build_number_from_digits_combines_expected_width_with_spacing(tmp_path)
     folder = _make_digit_folder(tmp_path, widths=[20, 30], height=28)
     composite = build_number_from_digits(str(folder), height=28, spacing=5)
     assert composite.width == 20 + 30 + 5
+
+
+def test_build_number_from_digits_keeps_order_past_nine_digits(tmp_path):
+    # with plain string sorting digit_10.png would land straight after digit_1.png,
+    # so each digit gets its own grey level to check where it ended up
+    folder = tmp_path / "digits"
+    folder.mkdir()
+    for i in range(12):
+        Image.new("L", (10, 28), color=i * 20).save(folder / f"digit_{i}.png")
+    composite = build_number_from_digits(str(folder), height=28, spacing=0)
+    for i in range(12):
+        assert composite.getpixel((i * 10 + 5, 14)) == i * 20

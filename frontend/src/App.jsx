@@ -40,6 +40,10 @@ export default function App() {
       .catch(() => { setModelsLoaded(true); setError("Could not check the available models. Is the backend running?"); });
   }, []);
   useEffect(() => () => previews.forEach(URL.revokeObjectURL), [previews]);
+  useEffect(() => {
+    const chosen = models.find((item) => item.key === selectedModel);
+    if (chosen?.accuracy) setThreshold(Math.ceil(Math.round(chosen.accuracy * 10000) / 100) / 100);
+  }, [models, selectedModel]);
   // Start each canvas with a white background and black pen strokes. This also
   // makes the exported PNG look like the uploaded handwriting images.
   useEffect(() => {

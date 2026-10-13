@@ -60,6 +60,7 @@ export default function App() {
   }, [mode, source]);
 
   // Number and character selectors have separate model lists; Word has one model.
+  const selectedAccuracy = models.find((item) => item.key === selectedModel)?.accuracy;
   const modelReady = mode === "numbers"
     ? models.some((item) => item.key === selectedModel && item.available)
     : mode === "character" ? characterModels.some((item) => item.key === selectedCharacterModel && item.available)
@@ -186,7 +187,7 @@ export default function App() {
               {characterModels.map((item) => <option key={item.key} value={item.key} disabled={!item.available}>{item.label}{item.available ? "" : " (not trained)"}</option>)}
             </select></label>}
           {mode === "numbers" && <label className="threshold-control" htmlFor="threshold-choice">
-            <span>Flag digits below {(threshold * 100).toFixed(0)}% confidence</span>
+            <span>Flag digits below {(threshold * 100).toFixed(0)}% confidence{selectedAccuracy ? ` (model accuracy ${(selectedAccuracy * 100).toFixed(1)}%)` : ""}</span>
             <input id="threshold-choice" type="range" min="0" max="100" step="1"
               value={Math.round(threshold * 100)} disabled={loading}
               onChange={(event) => setThreshold(Number(event.target.value) / 100)} />

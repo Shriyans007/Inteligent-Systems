@@ -1,4 +1,4 @@
-"""FastAPI service for handwritten digit, character, and word predictions."""
+"""FastAPI service for handwritten digit and character predictions."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from PIL import Image
 from cnn_model.models import _keras
 from preprocessing import prepare_mnist_digit
 from segmentation import crops_to_model_input, segment
-from text_recognition.common import CHAR_MODEL, CHAR_MAPPING, WORD_MODEL, WORD_VOCAB, prepare_character, prepare_word
+from text_recognition.common import prepare_character
 from text_recognition.emnist import model_paths
 
 # These paths belong to the original ten-digit classifiers.
@@ -139,75 +139,61 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
     }
 
 
-# Character models classify individual crops. The word model reads the full
-# image, so it has its own saved weights and vocabulary.
-EXTENSION_PATHS = {"character": (CHAR_MODEL, CHAR_MAPPING), "word": (WORD_MODEL, WORD_VOCAB)}
 CHARACTER_PATHS = {key: model_paths(key)[1:] for key in MODEL_PATHS}
 _extension_models = {}
 
 
 @app.get("/api/extension-models")
 def extension_models() -> dict:
-    return {"models": [{"key": key, "available": model.is_file() and meta.is_file()}
-                       for key, (model, meta) in EXTENSION_PATHS.items()],
-            "character_models": [{"key": key, "label": MODEL_LABELS[key],
+    return {"character_models": [{"key": key, "label": MODEL_LABELS[key],
                                   "available": path.is_file() and meta.is_file()}
                                  for key, (path, meta) in CHARACTER_PATHS.items()]}
 
 
-def get_extension_model(mode, model_key="cnn"):
-    if mode not in EXTENSION_PATHS:
-        raise HTTPException(status_code=400, detail="Unknown recognition mode.")
-    if mode == "character" and model_key not in CHARACTER_PATHS:
+def get_extension_model(model_key="cnn"):
+    if model_key not in CHARACTER_PATHS:
         raise HTTPException(status_code=400, detail="Unknown character model selection.")
-    path, metadata = CHARACTER_PATHS[model_key] if mode == "character" else EXTENSION_PATHS[mode]
+    path, metadata = CHARACTER_PATHS[model_key]
     if not path.is_file() or not metadata.is_file():
-        raise HTTPException(status_code=503, detail=f"Train the {mode} {model_key if mode == 'character' else ''} model first; expected {path} and {metadata}.")
-    cache_key = (mode, model_key if mode == "character" else "word")
-    if cache_key not in _extension_models:
-        _extension_models[cache_key] = (_keras().models.load_model(path), json.loads(metadata.read_text()))
-    return _extension_models[cache_key]
+        raise HTTPException(status_code=503, detail=f"Train the character {model_key} model first; expected {path} and {metadata}.")
+    if model_key not in _extension_models:
+        _extension_models[model_key] = (_keras().models.load_model(path), json.loads(metadata.read_text()))
+    return _extension_models[model_key]
 
 
 @app.post("/api/recognise-text")
-async def recognise_text(mode: str = Form(...), file: UploadFile = File(...), model: str = Form("cnn")) -> dict:
-    if mode not in EXTENSION_PATHS:
-        raise HTTPException(status_code=400, detail="Select character or word mode.")
+async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
+                         mode: str | None = Form(None)) -> dict:
+    if mode is not None and mode != "character":
+        raise HTTPException(status_code=400, detail="Only character recognition is available.")
     if file.content_type not in {"image/png", "image/jpeg", "image/bmp", "image/webp"}:
         raise HTTPException(status_code=415, detail="Upload a PNG, JPG, BMP or WebP image.")
     content = await file.read()
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="The image exceeds the 5 MB limit.")
     try:
-        classifier, mapping = get_extension_model(mode, model)
+        classifier, mapping = get_extension_model(model)
         # Verify the upload before opening it again for preprocessing.
         with Image.open(io.BytesIO(content)) as image:
             image.verify()
         with Image.open(io.BytesIO(content)) as image:
-            if mode == "character":
-                crops = segment(image)
-                if not crops:
-                    raise ValueError("The image does not contain visible writing.")
-                if len(crops) > 30:
-                    raise ValueError("Draw no more than 30 separated characters in one image.")
-                # Use the full image for one character, or classify separated
-                # crops in left-to-right order for a longer drawing.
-                prepared = [prepare_character(image)] if len(crops) == 1 else [prepare_character(Image.fromarray(c.image)) for c in crops]
-            else:
-                prepared = prepare_word(image, width=int(classifier.input_shape[2]))
-        if mode == "character":
-            probabilities = classifier.predict(np.stack(prepared), verbose=0)
-            predictions = []
-            for position, scores in enumerate(probabilities):
-                index = int(np.argmax(scores))
-                predictions.append({"position": position, "character": mapping[str(index)], "confidence": float(scores[index])})
-            return {"mode": mode, "model": model, "model_label": MODEL_LABELS[model],
-                    "text": "".join(item["character"] for item in predictions),
-                    "confidence": sum(item["confidence"] for item in predictions)/len(predictions),
-                    "predictions": predictions}
-        probabilities = classifier.predict(prepared[None, ...], verbose=0)
-        from text_recognition.iam import decode
-        return {"mode": mode, "text": decode(_keras(), probabilities, mapping)[0]}
+            crops = segment(image)
+            if not crops:
+                raise ValueError("The image does not contain visible writing.")
+            if len(crops) > 30:
+                raise ValueError("Draw no more than 30 separated characters in one image.")
+            # Use the full image for one character, or classify separated
+            # crops in left-to-right order for a longer drawing.
+            prepared = [prepare_character(image)] if len(crops) == 1 else [prepare_character(Image.fromarray(c.image)) for c in crops]
+        probabilities = classifier.predict(np.stack(prepared), verbose=0)
+        predictions = []
+        for position, scores in enumerate(probabilities):
+            index = int(np.argmax(scores))
+            predictions.append({"position": position, "character": mapping[str(index)], "confidence": float(scores[index])})
+        return {"mode": "character", "model": model, "model_label": MODEL_LABELS[model],
+                "text": "".join(item["character"] for item in predictions),
+                "confidence": sum(item["confidence"] for item in predictions)/len(predictions),
+                "predictions": predictions}
     except HTTPException:
         raise
     except (OSError, ValueError, KeyError) as exc:

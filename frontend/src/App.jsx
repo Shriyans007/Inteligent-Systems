@@ -185,7 +185,20 @@ export default function App() {
           {!result ? <div className="empty-result">Your prediction will appear here.</div> : "number" in result ? (
             <div className="result"><p>Model: {result.model_label}</p><p>Predicted number</p><strong>{result.number}</strong>
               <dl><div><dt>Average confidence</dt><dd>{(result.average_confidence * 100).toFixed(1)}%</dd></div><div><dt>Lowest digit</dt><dd>{(result.lowest_confidence * 100).toFixed(1)}%</dd></div></dl>
-              <div className="digit-results">{result.predictions.map((item) => <span key={item.position}>{item.digit}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
+              <div className="digit-results">{result.predictions.map((item) => (
+                <span key={item.position}>
+                  {item.digit}
+                  <small>{(item.confidence * 100).toFixed(1)}%</small>
+                  <div className="prob-bars">
+                    {item.probabilities.map((p, digit) => (
+                      <div key={digit} className={digit === item.digit ? "prob-row winner" : "prob-row"}>
+                        <span className="prob-label">{digit}</span>
+                        <span className="prob-bar" style={{ width: `${p * 100}%` }} />
+                      </div>
+                    ))}
+                  </div>
+                </span>
+              ))}</div>
             </div>
           ) : <div className="result"><p>Predicted characters · {result.model_label}</p><strong>{result.text || "(no text detected)"}</strong>
             <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>

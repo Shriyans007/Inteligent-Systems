@@ -113,23 +113,22 @@ representative images for a meaningful Task 4 assessment, and separately
 inspect the React display in your browser. The upload command evaluates the
 API's currently configured model; it does not change the default model.
 
-## Research extension: characters and handwritten words
+## Research extension: letters and digits
 
-The existing four ten-class MNIST number models (MLP, shallow CNN, LeNet-5,
-small ResNet) remain under `artifacts/` and use `/api/predict`. For the
-alphabet-and-digit extension, **retrain those same four architectures** with
-62 EMNIST ByClass outputs and compare their held-out results. The ten-class
-trained weights do not themselves recognise letters. Each 62-class model has
-its own saved weights; the previously trained EMNIST shallow CNN keeps its
-existing path and results. Character mode lets you choose among trained
-62-class models. The additional **word** CRNN uses
-convolutional features, a bidirectional LSTM and CTC to transcribe a single
-word without cutting it into individual characters. Neither extension model is
-trained or enabled until you run its training command locally. A word is
-resized with its aspect ratio intact and padded to 64×384. This is a word
-recogniser, not a line/page recogniser; spaces are not supported in Word mode.
+The four existing MNIST classifiers (MLP, shallow CNN, LeNet-5 and small
+ResNet) recognise digits only. The same architectures can be trained separately
+with 62 outputs on EMNIST ByClass to recognise individual letters and digits.
+Those character models have different weights and files from the ten-class
+MNIST models. The default MNIST CNN is unchanged.
 
-Put the local datasets in these folders (all of `data/` is gitignored):
+The interface has one drawing area for handwriting. Choose an available
+**Letters and digits** model for separated characters (including numbers), or
+an available **Digits only** model for the original MNIST number prediction
+path. Uploaded images use the same selected path. It joins separate character
+crops from left to right; connected handwriting may be treated as one crop,
+and spaces, whole words and lines are not inferred.
+
+Keep the five EMNIST ByClass files locally under `data/emnist/byclass/` (this directory is gitignored):
 
 ```text
 data/emnist/byclass/emnist-byclass-mapping.txt
@@ -137,79 +136,36 @@ data/emnist/byclass/emnist-byclass-train-images-idx3-ubyte.gz
 data/emnist/byclass/emnist-byclass-train-labels-idx1-ubyte.gz
 data/emnist/byclass/emnist-byclass-test-images-idx3-ubyte.gz
 data/emnist/byclass/emnist-byclass-test-labels-idx1-ubyte.gz
-data/iam/ascii/words.txt
-data/iam/ascii/forms.txt
-data/iam/words/<section>/<form>/<word-id>.png
 ```
 
-`forms.txt` comes from IAM `ascii.tgz`. It maps forms to writers. The loader
-uses that mapping to keep writers separate in an 80/10/10 approximate split
-with seed 42, then skips IAM segmentation errors, missing PNGs, blank images and unreadable images. The initial image check may take a few minutes; it prints how many files were skipped before training. The split
-is deterministic. The IAM character inventory is fixed from the corpus labels;
-only training writer images update model weights, and validation writers select
-an epoch. The held-out test writers are used for final metrics. This split
-will differ from IAM's official benchmark split, so compare results only when
-the evaluation protocol matches.
-
-Run these commands in **PowerShell from the repository root**. Your existing
-`(hnrs)` Python environment can be activated with:
+Run these commands from the project root in PowerShell with the `(hnrs)`
+environment:
 
 ```powershell
 & "C:\venvs\hnrs\Scripts\Activate.ps1"
 python -m pip install -r requirements.txt
-```
-
-Check your extraction and orientation **before full training**:
-
-```powershell
 python -m text_recognition.emnist check
 python -m text_recognition.emnist preview
-python -m text_recognition.iam check
 ```
 
-Before another IAM training run, audit the source labels (this only reads
-`words.txt`, does not retrain or overwrite the saved model):
+Check that the preview characters look upright and match their labels. The
+optional quick run uses a separate output folder and is not a final result:
 
 ```powershell
-python -m text_recognition.iam audit --data "C:\hnrs-data\iam"
+python -m text_recognition.emnist train --model cnn --quick --epochs 2
 ```
 
-The IAM metadata appears in both nine-field and ten-field forms. An earlier
-loader version could accidentally include a grammatical tag in some labels
-from ten-field records. The audit prints the number of labels changed by the
-corrected parser. Keep the first-run results as the measured baseline; decide
-whether to retrain only after reviewing the count. The existing saved model
-is not rewritten by `audit`.
-
-Open `artifacts\text\character\orientation_preview.png` and confirm the
-characters look upright and match the printed labels. IAM `check` reports the
-number of samples containing digits: review that count before claiming the
-word model covers mixed letters and numbers. Character and word commands
-accept `--data` for a different local dataset directory and `--output` for a
-different output directory. If extracted IAM files are nested one extra level,
-move them to the layout above rather than pointing at the archives.
-
-Optional small pipeline runs save under separate `quick` directories and are
-**not final results**:
+Train each character model locally, one at a time, if its saved weights are
+missing or you want to rerun that experiment:
 
 ```powershell
-python -m text_recognition.emnist train --model mlp --quick --epochs 2
-python -m text_recognition.iam train --quick --epochs 2
-```
-
-Run full training yourself, one command at a time. Twelve epochs is an upper
-bound for EMNIST early stopping and an upper bound for IAM validation stopping:
-
-```powershell
+python -m text_recognition.emnist train --model cnn --epochs 12
 python -m text_recognition.emnist train --model mlp --epochs 12
 python -m text_recognition.emnist train --model lenet5 --epochs 12
 python -m text_recognition.emnist train --model resnet --epochs 12
-# Only if you need to train/retrain the already trained CNN:
-python -m text_recognition.emnist train --model cnn --epochs 12
-python -m text_recognition.iam train --epochs 12
 ```
 
-Re-run held-out evaluation after training if needed:
+Re-evaluate and compare saved results:
 
 ```powershell
 python -m text_recognition.emnist evaluate --model cnn
@@ -217,153 +173,17 @@ python -m text_recognition.emnist evaluate --model mlp
 python -m text_recognition.emnist evaluate --model lenet5
 python -m text_recognition.emnist evaluate --model resnet
 python -m text_recognition.emnist compare
-python -m text_recognition.iam evaluate
 ```
 
-EMNIST CNN writes `artifacts/text/character/emnist_cnn.keras`, `mapping.json`,
-`results.json`, `per_character.csv` and `confusion_matrix.csv`. For each of
-`mlp`, `lenet5` and `resnet`, the same filenames (with `emnist_<model>.keras`)
-are written in `artifacts/text/character/<model>/`. `compare` writes
-`artifacts/text/character/comparison.csv` containing only models with saved
-measured test results and prints which are pending. Its training
-uses a fixed 90/10 training/validation split from the official training IDX;
-the official test IDX is held out until evaluation. IAM writes
-`artifacts/text/word/iam_crnn.keras`, `vocabulary.json`, `test_results.json`
-and `test_predictions.csv`. It reports character error rate (total character
-edits divided by reference characters), word error rate (fraction of incorrect
-words) and exact-word accuracy. These files contain measured results only
-after local training/evaluation. Generated models and data are ignored by Git.
+The character CNN saves to `artifacts/text/character/emnist_cnn.keras`, with
+`mapping.json`, `results.json`, `per_character.csv` and
+`confusion_matrix.csv` beside it. The other models save under
+`artifacts/text/character/<model>/`; comparison writes
+`artifacts/text/character/comparison.csv`. The training data is split into
+training and validation sets, while the EMNIST test set is held out until
+evaluation. Only locally measured results belong in these output files.
 
-To test separately collected mixed letter-and-number **single words**, save
-labelled images and a local `data/mixed_words.csv`:
-
-```csv
-image,label
-room42.png,Room42
-ai2026.png,AI2026
-```
-
-Then run:
-
-```powershell
-python -m text_recognition.iam evaluate-examples --manifest data/mixed_words.csv
-```
-
-This writes `examples_results.json` and `examples_predictions.csv` beside the
-IAM model. IAM word data may contain few numeric examples, so this separate
-evaluation matters. It cannot make an unsupported character part of the model's
-vocabulary; check `vocabulary.json` after training. Real camera photos and
-mouse drawings should be tested separately from cropped dataset images.
-
-### Diagnose and improve IAM word recognition
-
-Keep the first IAM model and its measured test files as the baseline. From the
-project root in `(hnrs)`, analyse **all rows** of the locally saved predictions
-CSV without loading the IAM dataset or training a model:
-
-```powershell
-python -m text_recognition.iam_analysis --predictions artifacts\text\word\test_predictions.csv
-```
-
-This prints word length, all-capitals, digit and punctuation/space groups, and
-writes `artifacts\text\word\error_analysis.json` with the counts and frequent
-mistakes. The groups overlap, so do not add their counts together. The held-out
-test CSV is descriptive evidence; use **validation** writers to choose a
-change, not test accuracy to tune the model.
-
-Check how many usable labels of each type actually reached each writer split
-before planning a new training run:
-
-```powershell
-python -m text_recognition.iam check --data "C:\hnrs-data\iam"
-```
-
-This reads and validates the IAM images, but does not train or change a model.
-
-First compare greedy versus beam CTC decoding on the *existing saved model*
-without retraining (each command rereads local IAM images):
-
-```powershell
-python -m text_recognition.iam evaluate-validation --data "C:\hnrs-data\iam" --decoder greedy
-python -m text_recognition.iam evaluate-validation --data "C:\hnrs-data\iam" --decoder beam --beam-width 10
-```
-
-These create separate `validation_predictions.csv`, `validation_results.json`,
-`validation_beam10_predictions.csv` and `validation_beam10_results.json` in
-`artifacts\text\word`. If beam improves validation CER and exact-word accuracy,
-measure it on the same held-out writers with:
-
-```powershell
-python -m text_recognition.iam evaluate --data "C:\hnrs-data\iam" --decoder beam --beam-width 10
-```
-
-That writes `test_beam10_results.json` and `test_beam10_predictions.csv` and
-keeps the first `test_results.json` intact. Beam decoding is another way to
-read the saved model's probabilities; an improvement is not guaranteed.
-
-If the train split contains few all-capital or digit words, try one controlled
-**balanced** run: it gives those training words four times the weight in CTC
-loss, without copying test/validation words or changing the architecture,
-input size or decoder. The weighted training loss is not numerically comparable
-to the original unweighted training loss. Use validation CER and exact-word
-accuracy instead; upweighting may still overfit scarce writing styles.
-
-```powershell
-python -m text_recognition.iam train --quick --data "C:\hnrs-data\iam" --variant balanced --output "artifacts\text\word_balanced" --epochs 2
-python -m text_recognition.iam train --data "C:\hnrs-data\iam" --variant balanced --output "artifacts\text\word_balanced" --epochs 12
-python -m text_recognition.iam evaluate-validation --data "C:\hnrs-data\iam" --output "artifacts\text\word_balanced"
-```
-
-The quick check saves under `word_balanced\quick` and cannot overwrite the
-original model or final balanced path. After reviewing the new validation
-results against `artifacts\text\word\validation_results.json`, run held-out
-evaluation **once** if the new model merits comparison:
-
-```powershell
-python -m text_recognition.iam evaluate --data "C:\hnrs-data\iam" --output "artifacts\text\word_balanced"
-```
-
-Few training samples mix letters and digits. A higher weight does not create
-new writing styles, so independently labelled alphanumeric words remain
-necessary to evaluate that specific research claim.
-
-An optional second experiment adds seeded shifts of at most two pixels to
-**training images only**, while leaving validation and test preprocessing
-untouched. Use a new folder, never the path of a running or completed model:
-
-```powershell
-python -m text_recognition.iam train --quick --data "C:\hnrs-data\iam" --variant balanced --augment --output "artifacts\text\word_balanced_aug" --epochs 2
-python -m text_recognition.iam train --data "C:\hnrs-data\iam" --variant balanced --augment --output "artifacts\text\word_balanced_aug" --epochs 12
-python -m text_recognition.iam evaluate-validation --data "C:\hnrs-data\iam" --output "artifacts\text\word_balanced_aug"
-```
-
-Compare validation results before deciding whether to evaluate this model on
-held-out data. If the balanced run is already under way, let it finish first.
-Shifts offer limited variation and cannot make the model recognise writing
-styles or digit examples absent from IAM.
-
-If the analysis shows long words are weak, optionally train a new **wider**
-version with the same IAM writer split, architecture and labels but a 512-pixel
-word canvas (instead of 384). This is a fresh run, may take longer on a CPU,
-and does not load or replace the original weights:
-
-```powershell
-python -m text_recognition.iam train --data "C:\hnrs-data\iam" --variant wider --output "artifacts\text\word_wider" --epochs 12
-python -m text_recognition.iam evaluate-validation --data "C:\hnrs-data\iam" --output "artifacts\text\word_wider"
-```
-
-The new files include `artifacts\text\word_wider\iam_crnn.keras` and
-`vocabulary.json`. Neither new variant runs held-out evaluation during
-training: run `evaluate-validation` first, then `evaluate` to create
-`test_results.json` and `test_predictions.csv` if warranted. The original Word GUI/API still selects
-the original trained model. Because the original test predictions were already
-examined when proposing changes, document any improvement on that test as an
-exploratory comparison and evaluate additional labelled handwritten words
-before making a strong generalisation claim. The held-out IAM test writers
-must never be added to training or validation.
-
-Start the API and GUI in separate PowerShell terminals from the repository
-root; activate `(hnrs)` in the API terminal:
+Start FastAPI and React in separate PowerShell terminals:
 
 ```powershell
 & "C:\venvs\hnrs\Scripts\Activate.ps1"
@@ -376,27 +196,14 @@ npm.cmd install
 npm.cmd run dev
 ```
 
-Open `http://localhost:5173`. Select Numbers, Character or Word and then
-Upload image or Draw here. Clear drawing erases the canvas; Reset clears the
-current result and input. Number model selection still uses the trained MNIST
-models, with CNN as the default. Number mode can split some touching digits
-when their shared stroke is narrow, and keeps close crops from including their
-neighbours. Broadly joined or overlapping digits may still need to be drawn
-with more space; record actual-image results before claiming an accuracy gain.
-Character and Word show “Train the model
-first” until their `.keras` and mapping files exist; restart the backend and
-refresh the GUI after local training. Drawing uses the same API and image
-preprocessing as uploading in the selected mode. Character mode can join up to
-30 separated handwritten letters and digits left to right in one image, using
-the selected EMNIST character model for each crop. It shows each character's
-confidence and the combined text. Touching characters may be merged and
-detached strokes may be split; it does not infer spaces or recognise full
-lines. Use Word mode for one connected handwritten word. Record labelled real-image
-predictions before claiming performance outside the held-out datasets.
+Open `http://localhost:5173`. Use **Draw here** or **Upload image**, then
+select a trained model and press **Recognise**. **Clear drawing** erases the
+canvas; **Reset** clears the current input and result. Missing model files are
+shown as unavailable; train the chosen model locally and refresh the page.
+The original digit models still use `/api/predict`, while the EMNIST character
+models use `/api/recognise-text`.
 
-Dataset and method references: [NIST EMNIST](https://www.nist.gov/itl/products-and-services/emnist-dataset),
-[IAM Handwriting Database](https://fki.tic.heia-fr.ch/databases/iam-handwriting-database),
-[Keras IAM word-recognition example](https://keras.io/examples/vision/handwriting_recognition/).
+Dataset reference: [NIST EMNIST](https://www.nist.gov/itl/products-and-services/emnist-dataset).
 
 ## Requirements
 

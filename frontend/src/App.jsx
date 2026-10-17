@@ -4,48 +4,45 @@ const allowedTypes = ["image/png", "image/jpeg", "image/bmp", "image/webp"];
 const fallbackModels = [{ key: "cnn", label: "Shallow CNN", available: false }];
 
 export default function App() {
-  const [mode, setMode] = useState("numbers");
-  const [source, setSource] = useState("upload");
+  const [source, setSource] = useState("draw");
   const [files, setFiles] = useState([]);
   const [drawn, setDrawn] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState(fallbackModels);
-  const [extensionModels, setExtensionModels] = useState([]);
   const [characterModels, setCharacterModels] = useState(fallbackModels);
-  const [selectedModel, setSelectedModel] = useState("cnn");
-  const [selectedCharacterModel, setSelectedCharacterModel] = useState("cnn");
+  const [choice, setChoice] = useState("character:cnn");
   const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [threshold, setThreshold] = useState(0.5);
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
   const pointerRef = useRef(null);
   const previews = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
+  const [family, modelKey] = choice.split(":");
+  const modelReady = (family === "character" ? characterModels : models)
+    .some((item) => item.key === modelKey && item.available);
 
-  // Ask the API which saved models are actually present before enabling Recognise.
   useEffect(() => {
     Promise.all([fetch("/api/models"), fetch("/api/extension-models")])
       .then(async ([numbers, extensions]) => {
         if (!numbers.ok || !extensions.ok) throw new Error("Model status unavailable.");
         const digit = await numbers.json();
         const text = await extensions.json();
+        const characters = text.character_models ?? fallbackModels;
         setModels(digit.models);
-        setExtensionModels(text.models);
-        setCharacterModels(text.character_models ?? fallbackModels);
-        const preferred = digit.models.find((item) => item.key === digit.default_model && item.available);
-        setSelectedModel((preferred ?? digit.models.find((item) => item.available))?.key ?? digit.default_model);
+        setCharacterModels(characters);
+        // Use a 62-class model when available, so the drawing can contain letters and digits.
+        const firstCharacter = characters.find((item) => item.key === "cnn" && item.available)
+          ?? characters.find((item) => item.available);
+        const firstDigit = digit.models.find((item) => item.key === digit.default_model && item.available)
+          ?? digit.models.find((item) => item.available);
+        setChoice(firstCharacter ? `character:${firstCharacter.key}`
+          : firstDigit ? `numbers:${firstDigit.key}` : "character:cnn");
         setModelsLoaded(true);
       })
       .catch(() => { setModelsLoaded(true); setError("Could not check the available models. Is the backend running?"); });
   }, []);
   useEffect(() => () => previews.forEach(URL.revokeObjectURL), [previews]);
-  useEffect(() => {
-    const chosen = models.find((item) => item.key === selectedModel);
-    if (chosen?.accuracy) setThreshold(Math.ceil(Math.round(chosen.accuracy * 10000) / 100) / 100);
-  }, [models, selectedModel]);
-  // Start each canvas with a white background and black pen strokes. This also
-  // makes the exported PNG look like the uploaded handwriting images.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -57,36 +54,27 @@ export default function App() {
     context.lineCap = "round";
     context.lineJoin = "round";
     setDrawn(false);
-  }, [mode, source]);
+  }, [source]);
 
-  // Number and character selectors have separate model lists; Word has one model.
-  const selectedAccuracy = models.find((item) => item.key === selectedModel)?.accuracy;
-  const modelReady = mode === "numbers"
-    ? models.some((item) => item.key === selectedModel && item.available)
-    : mode === "character" ? characterModels.some((item) => item.key === selectedCharacterModel && item.available)
-      : extensionModels.some((item) => item.key === mode && item.available);
-
-  function changeMode(next) {
-    setMode(next); setFiles([]); setResult(null); setError(""); setDrawn(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
   function chooseFiles(event) {
     const selected = Array.from(event.target.files ?? []);
     const invalid = selected.find((file) => !allowedTypes.includes(file.type) || file.size > 5 * 1024 * 1024);
     if (invalid) return setError(`${invalid.name} must be a PNG, JPG, BMP or WebP image under 5 MB.`);
-    if (mode !== "numbers" && selected.length > 1) return setError("Select one image for this mode.");
-    setFiles(selected.slice(0, mode === "numbers" ? 30 : 1)); setResult(null); setError("");
+    setFiles(selected.slice(0, family === "numbers" ? 30 : 1));
+    setResult(null); setError("");
+  }
+  function changeChoice(event) {
+    setChoice(event.target.value);
+    setFiles([]); setResult(null); setError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
   function point(event) {
-    // The canvas is displayed at different sizes, but its drawing coordinates
-    // always use the same 720x220 bitmap.
     const bounds = canvasRef.current.getBoundingClientRect();
     return [(event.clientX - bounds.left) * canvasRef.current.width / bounds.width,
-    (event.clientY - bounds.top) * canvasRef.current.height / bounds.height];
+      (event.clientY - bounds.top) * canvasRef.current.height / bounds.height];
   }
   function startStroke(event) {
     const canvas = canvasRef.current;
-    // Keep this pointer even if a mouse or finger moves outside the canvas.
     canvas.setPointerCapture(event.pointerId);
     const [x, y] = point(event);
     const context = canvas.getContext("2d");
@@ -105,7 +93,11 @@ export default function App() {
   }
   function clearDrawing() {
     const canvas = canvasRef.current;
-    if (canvas) { const context = canvas.getContext("2d"); context.fillStyle = "white"; context.fillRect(0, 0, canvas.width, canvas.height); }
+    if (canvas) {
+      const context = canvas.getContext("2d");
+      context.fillStyle = "white";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    }
     setDrawn(false); setResult(null); setError("");
   }
   async function recognise() {
@@ -113,20 +105,15 @@ export default function App() {
     if (source === "draw" && !drawn) return setError("Draw something first.");
     setLoading(true); setError(""); setResult(null);
     const body = new FormData();
-    // The number endpoint accepts a list of images; the text endpoint accepts
-    // one image and the selected recognition mode.
     if (source === "draw") {
       const blob = await new Promise((resolve) => canvasRef.current.toBlob(resolve, "image/png"));
       if (!blob) { setLoading(false); return setError("Could not read the drawing."); }
-      if (mode === "numbers") body.append("files", blob, "drawing.png");
-      else body.append("file", blob, "drawing.png");
-    } else if (mode === "numbers") files.forEach((file) => body.append("files", file));
+      body.append(family === "numbers" ? "files" : "file", blob, "drawing.png");
+    } else if (family === "numbers") files.forEach((file) => body.append("files", file));
     else body.append("file", files[0]);
-    if (mode === "numbers") body.append("model", selectedModel);
-    else { body.append("mode", mode); if (mode === "character") body.append("model", selectedCharacterModel); }
+    body.append("model", modelKey);
     try {
-      const response = await fetch(mode === "numbers" ? "/api/predict" : "/api/recognise-text", { method: "POST", body });
-      // A server error might be plain text, so leave a useful message in the UI.
+      const response = await fetch(family === "numbers" ? "/api/predict" : "/api/recognise-text", { method: "POST", body });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.detail || `Prediction failed (API ${response.status}). Check the backend terminal.`);
       if (!data) throw new Error("The API returned an invalid response. Check the backend terminal.");
@@ -150,74 +137,65 @@ export default function App() {
       </header>
       <section className="workspace">
         <article className="panel">
-          <h2>What would you like to recognise?</h2>
-          <div className="mode-options" role="group" aria-label="Recognition mode">
-            {[["numbers", "Numbers"], ["character", "Character"], ["word", "Word"]].map(([key, label]) => (
-              <button key={key} className={mode === key ? "chosen" : "secondary-button"} onClick={() => changeMode(key)} disabled={loading}>{label}</button>
-            ))}
-          </div>
-          <p className="hint">{mode === "numbers" ? "Upload a handwritten number or several digit images from left to right." : mode === "character" ? "Draw or upload one or more separated letters and digits, left to right. Spaces and full lines are not supported." : "One handwritten word per image. Spaces and full lines are not supported."}</p>
+          <h2>{source === "draw" ? "Draw here" : "Upload image"}</h2>
+          <p className="hint">{family === "character"
+            ? "Draw or upload separate letters and digits from left to right. Spaces and full lines are not supported."
+            : "Draw a number or upload a number image. This model recognises digits only."}</p>
           <div className="mode-options" role="group" aria-label="Input method">
-            {[["upload", "Upload image"], ["draw", "Draw here"]].map(([key, label]) => (
-              <button key={key} className={source === key ? "chosen" : "secondary-button"} disabled={loading} onClick={() => { setSource(key); setResult(null); setError(""); }}>{label}</button>
+            {[["draw", "Draw here"], ["upload", "Upload image"]].map(([key, label]) => (
+              <button key={key} className={source === key ? "chosen" : "secondary-button"} disabled={loading}
+                onClick={() => { setSource(key); setFiles([]); setResult(null); setError(""); }}>
+                {label}
+              </button>
             ))}
           </div>
           {source === "upload" ? <>
             <label className="dropzone">
-              <input ref={fileInputRef} type="file" multiple={mode === "numbers"} accept="image/png,image/jpeg,image/bmp,image/webp" onChange={chooseFiles} />
-              <strong>Choose image {mode === "numbers" ? "files" : "file"}</strong>
+              <input ref={fileInputRef} type="file" multiple={family === "numbers"}
+                accept="image/png,image/jpeg,image/bmp,image/webp" onChange={chooseFiles} />
+              <strong>Choose image {family === "numbers" ? "files" : "file"}</strong>
               <span>PNG, JPG, BMP or WebP · maximum 5 MB each</span>
             </label>
             <div className="previews">{previews.map((url, index) => (
               <figure key={`${files[index].name}-${index}`}><img src={url} alt={`Uploaded image ${index + 1}`} /><figcaption>{index + 1}</figcaption></figure>
             ))}</div>
           </> : <div className="drawing-area">
-            <canvas ref={canvasRef} width="720" height="220" aria-label="Draw handwriting here" onPointerDown={startStroke} onPointerMove={moveStroke} onPointerUp={endStroke} onPointerCancel={endStroke} />
+            <canvas ref={canvasRef} width="720" height="220" aria-label="Draw handwriting here"
+              onPointerDown={startStroke} onPointerMove={moveStroke} onPointerUp={endStroke} onPointerCancel={endStroke} />
             <button className="secondary-button" onClick={clearDrawing} disabled={loading || !drawn}>Clear drawing</button>
           </div>}
         </article>
         <article className="panel result-panel">
           <h2>Recognition result</h2>
-          {mode === "numbers" && <label className="model-selector" htmlFor="model-choice"><span>Select model</span>
-            <select id="model-choice" value={selectedModel} disabled={loading} onChange={(event) => { setSelectedModel(event.target.value); setResult(null); setError(""); }}>
-              {models.map((item) => <option key={item.key} value={item.key} disabled={!item.available}>{item.label}{item.available ? "" : " (not trained)"}</option>)}
-            </select></label>}
-          {mode === "character" && <label className="model-selector" htmlFor="character-model-choice"><span>Select character model</span>
-            <select id="character-model-choice" value={selectedCharacterModel} disabled={loading} onChange={(event) => { setSelectedCharacterModel(event.target.value); setResult(null); setError(""); }}>
-              {characterModels.map((item) => <option key={item.key} value={item.key} disabled={!item.available}>{item.label}{item.available ? "" : " (not trained)"}</option>)}
-            </select></label>}
-          {mode === "numbers" && <label className="threshold-control" htmlFor="threshold-choice">
-            <span>Flag digits below {(threshold * 100).toFixed(0)}% confidence{selectedAccuracy ? ` (model accuracy ${(selectedAccuracy * 100).toFixed(1)}%)` : ""}</span>
-            <input id="threshold-choice" type="range" min="0" max="100" step="1"
-              value={Math.round(threshold * 100)} disabled={loading}
-              onChange={(event) => setThreshold(Number(event.target.value) / 100)} />
-          </label>}
-          {!modelReady && modelsLoaded && <p className="hint">Train the {mode === "numbers" ? "selected number" : mode} model first, then restart the backend and refresh this page.</p>}
-          {!result ? <div className="empty-result">Your prediction will appear here.</div> : mode === "numbers" ? (
+          <label className="model-selector" htmlFor="model-choice"><span>Select model</span>
+            <select id="model-choice" value={choice} disabled={loading} onChange={changeChoice}>
+              <optgroup label="Letters and digits (EMNIST)">
+                {characterModels.map((item) => <option key={`character:${item.key}`} value={`character:${item.key}`} disabled={!item.available}>
+                  {item.label}{item.available ? "" : " (not trained)"}
+                </option>)}
+              </optgroup>
+              <optgroup label="Digits only (MNIST)">
+                {models.map((item) => <option key={`numbers:${item.key}`} value={`numbers:${item.key}`} disabled={!item.available}>
+                  {item.label}{item.available ? "" : " (not trained)"}
+                </option>)}
+              </optgroup>
+            </select>
+          </label>
+          {!modelReady && modelsLoaded && <p className="hint">Train the selected model first, then restart the backend and refresh this page.</p>}
+          {!result ? <div className="empty-result">Your prediction will appear here.</div> : "number" in result ? (
             <div className="result"><p>Model: {result.model_label}</p><p>Predicted number</p><strong>{result.number}</strong>
               <dl><div><dt>Average confidence</dt><dd>{(result.average_confidence * 100).toFixed(1)}%</dd></div><div><dt>Lowest digit</dt><dd>{(result.lowest_confidence * 100).toFixed(1)}%</dd></div></dl>
-              <div className="digit-results">{result.predictions.map((item) => (
-                <span key={item.position} className={item.confidence < threshold ? "uncertain" : undefined}>
-                  {item.digit}
-                  <small>{(item.confidence * 100).toFixed(1)}%</small>
-                  <div className="prob-bars">
-                    {item.probabilities.map((p, digit) => (
-                      <div key={digit} className={digit === item.digit ? "prob-row winner" : "prob-row"}>
-                        <span className="prob-label">{digit}</span>
-                        <span className="prob-bar" style={{ width: `${p * 100}%` }} />
-                      </div>
-                    ))}
-                  </div>
-                </span>
-              ))}</div>
+              <div className="digit-results">{result.predictions.map((item) => <span key={item.position}>{item.digit}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
             </div>
-          ) : <div className="result"><p>Predicted {mode === "character" ? "characters" : "word"}{mode === "character" ? ` · ${result.model_label}` : ""}</p><strong>{result.text || "(no text detected)"}</strong>{mode === "character" && <>
+          ) : <div className="result"><p>Predicted characters · {result.model_label}</p><strong>{result.text || "(no text detected)"}</strong>
             <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>
             <div className="digit-results">{result.predictions?.map((item) => <span key={item.position}>{item.character}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
-          </>}</div>}
+          </div>}
           {error && <p className="error" role="alert">{error}</p>}
           <div className="result-actions">
-            <button onClick={recognise} disabled={loading || !modelReady || (source === "upload" ? !files.length : !drawn)}>{loading ? "Recognising…" : `Recognise ${mode === "numbers" ? "number" : mode === "character" ? "characters" : "word"}`}</button>
+            <button onClick={recognise} disabled={loading || !modelReady || (source === "upload" ? !files.length : !drawn)}>
+              {loading ? "Recognising…" : "Recognise"}
+            </button>
             <button className="secondary-button" onClick={reset} disabled={loading || (!files.length && !drawn && !result && !error)}>Reset</button>
           </div>
         </article>

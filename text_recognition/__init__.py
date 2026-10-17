@@ -1,1 +1,1 @@
-"""Separate EMNIST character and IAM word experiments."""
+"""EMNIST letter and digit experiments."""

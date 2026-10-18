@@ -24,8 +24,10 @@ MODEL_PATHS = {
     "mlp": Path("artifacts/mlp_mnist.keras"),
     "lenet5": Path("artifacts/models/lenet5/lenet5_mnist.keras"),
     "resnet": Path("artifacts/models/resnet/resnet_mnist.keras"),
+    "svm": Path("artifacts/models/svm/svm_mnist.joblib"),
 }
-MODEL_LABELS = {"cnn": "Shallow CNN", "mlp": "MLP", "lenet5": "LeNet-5", "resnet": "Small ResNet"}
+MODEL_LABELS = {"cnn": "Shallow CNN", "mlp": "MLP", "lenet5": "LeNet-5", "resnet": "Small ResNet",
+                "svm": "SVM (RBF)"}
 # These come from scikit-learn, not Keras: they load with joblib and take flat 784-pixel input.
 SKLEARN_MODELS = {"svm"}
 
@@ -34,6 +36,7 @@ ACCURACY_SOURCES = {
     "mlp": (Path("artifacts/comparison.json"), "MLP baseline"),
     "lenet5": (Path("artifacts/models/lenet5/result.json"), None),
     "resnet": (Path("artifacts/models/resnet/result.json"), None),
+    "svm": (Path("artifacts/models/svm/result.json"), None),
 }
 
 
@@ -183,7 +186,8 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
     }
 
 
-CHARACTER_PATHS = {key: model_paths(key)[1:] for key in MODEL_PATHS}
+# The SVM only knows digits, so it is not offered as a letter-and-digit model.
+CHARACTER_PATHS = {key: model_paths(key)[1:] for key in MODEL_PATHS if key not in SKLEARN_MODELS}
 _extension_models = {}
 
 

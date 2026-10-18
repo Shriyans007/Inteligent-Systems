@@ -128,7 +128,12 @@ python -m svm_model.train
 This trains an RBF-kernel `SVC` on 10,000 MNIST training images, tests it on
 the 10,000 MNIST test images, and saves `artifacts/models/svm/svm_mnist.joblib`
 with `result.json`. Restart the API and choose **SVM (RBF)** under
-**Digits only (MNIST)**. The confidence threshold is set from its accuracy.
+**Digits only (MNIST)**. The GUI's warning threshold starts at 50% confidence
+and can be changed with the slider. The MNIST test accuracy is shown separately:
+it measures a dataset, not the confidence of an individual upload. SVM digit
+predictions use the same `predict()` decision rule as its reported test accuracy;
+the probability bars show its separately calibrated `predict_proba()` scores.
+Those two SVM outputs may occasionally rank digits differently.
 
 ### Comparison with the CNN on the benchmark set
 

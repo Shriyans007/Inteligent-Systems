@@ -46,9 +46,8 @@ export default function App() {
       .catch(() => { setModelsLoaded(true); setError("Could not check the available models. Is the backend running?"); });
   }, []);
   useEffect(() => () => previews.forEach(URL.revokeObjectURL), [previews]);
-  useEffect(() => {
-    if (selectedAccuracy) setThreshold(Math.ceil(Math.round(selectedAccuracy * 10000) / 100) / 100);
-  }, [selectedAccuracy]);
+  // Test accuracy is measured across a dataset; it is not a confidence cutoff
+  // for an individual drawing. Keep the user's warning setting independent.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -188,10 +187,11 @@ export default function App() {
             </select>
           </label>
           {family === "numbers" && <label className="threshold-control" htmlFor="threshold-choice">
-            <span>Flag digits below {(threshold * 100).toFixed(0)}% confidence{selectedAccuracy ? ` (model accuracy ${(selectedAccuracy * 100).toFixed(1)}%)` : ""}</span>
+            <span>Flag digits below {(threshold * 100).toFixed(0)}% confidence</span>
             <input id="threshold-choice" type="range" min="0" max="100" step="1"
               value={Math.round(threshold * 100)} disabled={loading}
               onChange={(event) => setThreshold(Number(event.target.value) / 100)} />
+            {selectedAccuracy != null && <small>MNIST test accuracy: {(selectedAccuracy * 100).toFixed(1)}% (different from confidence on this image)</small>}
           </label>}
           {!modelReady && modelsLoaded && <p className="hint">Train the selected model first, then restart the backend and refresh this page.</p>}
           {!result ? <div className="empty-result">Your prediction will appear here.</div> : "number" in result ? (

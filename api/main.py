@@ -101,12 +101,21 @@ def predict_probabilities(classifier, model_key: str, batch: np.ndarray) -> np.n
     return classifier.predict(batch, verbose=0)
 
 
+def predicted_digits(classifier, model_key: str, batch: np.ndarray,
+                     probabilities: np.ndarray) -> np.ndarray:
+    """Use the same SVM decision rule as its reported test accuracy."""
+    if model_key in SKLEARN_MODELS:
+        return classifier.predict(batch.reshape(len(batch), -1)).astype(int)
+    return probabilities.argmax(axis=1)
+
+
 @app.on_event("startup")
 def warm_up_model() -> None:
     """Load the trained CNN when the API starts so the first request is faster."""
     if MODEL_PATHS[DEFAULT_MODEL].is_file():
         model = get_model(DEFAULT_MODEL)
-        model.predict(np.zeros((1, 28, 28, 1), dtype=np.float32), verbose=0)
+        batch = np.zeros((1, 28, 28, 1), dtype=np.float32)
+        predict_probabilities(model, DEFAULT_MODEL, batch)
 
 
 @app.get("/api/health")
@@ -157,9 +166,10 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
         # Run one batch prediction rather than calling TensorFlow once per file.
         batch = np.concatenate(prepared_images, axis=0)
         batch_probabilities = predict_probabilities(classifier, model, batch)
+        digits = predicted_digits(classifier, model, batch, batch_probabilities)
         predictions = []
-        for position, (filename, probabilities) in enumerate(zip(filenames, batch_probabilities)):
-            digit = int(probabilities.argmax())
+        for position, (filename, probabilities, predicted) in enumerate(zip(filenames, batch_probabilities, digits)):
+            digit = int(predicted)
             predictions.append(
                 {
                     "position": position,

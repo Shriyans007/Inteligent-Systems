@@ -26,6 +26,8 @@ MODEL_PATHS = {
     "resnet": Path("artifacts/models/resnet/resnet_mnist.keras"),
 }
 MODEL_LABELS = {"cnn": "Shallow CNN", "mlp": "MLP", "lenet5": "LeNet-5", "resnet": "Small ResNet"}
+# These come from scikit-learn, not Keras: they load with joblib and take flat 784-pixel input.
+SKLEARN_MODELS = {"svm"}
 
 ACCURACY_SOURCES = {
     "cnn": (Path("artifacts/comparison.json"), "CNN selected"),
@@ -76,8 +78,24 @@ def get_model(model_key: str = DEFAULT_MODEL):
     if not path.is_file():
         raise HTTPException(status_code=503, detail=f"{MODEL_LABELS[model_key]} is not trained at {path}.")
     if model_key not in _models:
-        _models[model_key] = _keras().models.load_model(path)
+        if model_key in SKLEARN_MODELS:
+            import joblib
+            _models[model_key] = joblib.load(path)
+        else:
+            _models[model_key] = _keras().models.load_model(path)
     return _models[model_key]
+
+
+def predict_probabilities(classifier, model_key: str, batch: np.ndarray) -> np.ndarray:
+    """Return an (n, 10) probability array, whichever library the model comes from."""
+    if model_key in SKLEARN_MODELS:
+        # The SVM was trained on flat rows of 784 pixels, not 28x28x1 images.
+        scores = classifier.predict_proba(batch.reshape(len(batch), -1))
+        # predict_proba orders its columns by classes_, so place each one under its digit.
+        probabilities = np.zeros((len(batch), 10), dtype=np.float32)
+        probabilities[:, classifier.classes_.astype(int)] = scores
+        return probabilities
+    return classifier.predict(batch, verbose=0)
 
 
 @app.on_event("startup")
@@ -135,7 +153,7 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
 
         # Run one batch prediction rather than calling TensorFlow once per file.
         batch = np.concatenate(prepared_images, axis=0)
-        batch_probabilities = classifier.predict(batch, verbose=0)
+        batch_probabilities = predict_probabilities(classifier, model, batch)
         predictions = []
         for position, (filename, probabilities) in enumerate(zip(filenames, batch_probabilities)):
             digit = int(probabilities.argmax())

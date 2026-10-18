@@ -34,7 +34,7 @@ def test_selects_requested_model_and_rejects_missing_or_unknown(tmp_path, monkey
 
     with TestClient(api.app) as client:
         listed = {item["key"]: item["available"] for item in client.get("/api/models").json()["models"]}
-        assert listed == {"cnn": True, "mlp": False, "lenet5": False, "resnet": True}
+        assert listed == {"cnn": True, "mlp": False, "lenet5": False, "resnet": True, "svm": False}
         def send(choice):
             return client.post("/api/predict", data={"model": choice},
                                files={"files": ("digit.png", image_bytes, "image/png")})

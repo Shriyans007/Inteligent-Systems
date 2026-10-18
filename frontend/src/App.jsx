@@ -14,6 +14,7 @@ export default function App() {
   const [characterModels, setCharacterModels] = useState(fallbackModels);
   const [choice, setChoice] = useState("character:cnn");
   const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [threshold, setThreshold] = useState(0.5);
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
   const pointerRef = useRef(null);
@@ -21,6 +22,8 @@ export default function App() {
   const [family, modelKey] = choice.split(":");
   const modelReady = (family === "character" ? characterModels : models)
     .some((item) => item.key === modelKey && item.available);
+  // Only the digit models report a test accuracy to set the threshold from.
+  const selectedAccuracy = family === "numbers" ? models.find((item) => item.key === modelKey)?.accuracy : undefined;
 
   useEffect(() => {
     Promise.all([fetch("/api/models"), fetch("/api/extension-models")])
@@ -43,6 +46,9 @@ export default function App() {
       .catch(() => { setModelsLoaded(true); setError("Could not check the available models. Is the backend running?"); });
   }, []);
   useEffect(() => () => previews.forEach(URL.revokeObjectURL), [previews]);
+  useEffect(() => {
+    if (selectedAccuracy) setThreshold(Math.ceil(Math.round(selectedAccuracy * 10000) / 100) / 100);
+  }, [selectedAccuracy]);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -181,11 +187,30 @@ export default function App() {
               </optgroup>
             </select>
           </label>
+          {family === "numbers" && <label className="threshold-control" htmlFor="threshold-choice">
+            <span>Flag digits below {(threshold * 100).toFixed(0)}% confidence{selectedAccuracy ? ` (model accuracy ${(selectedAccuracy * 100).toFixed(1)}%)` : ""}</span>
+            <input id="threshold-choice" type="range" min="0" max="100" step="1"
+              value={Math.round(threshold * 100)} disabled={loading}
+              onChange={(event) => setThreshold(Number(event.target.value) / 100)} />
+          </label>}
           {!modelReady && modelsLoaded && <p className="hint">Train the selected model first, then restart the backend and refresh this page.</p>}
           {!result ? <div className="empty-result">Your prediction will appear here.</div> : "number" in result ? (
             <div className="result"><p>Model: {result.model_label}</p><p>Predicted number</p><strong>{result.number}</strong>
               <dl><div><dt>Average confidence</dt><dd>{(result.average_confidence * 100).toFixed(1)}%</dd></div><div><dt>Lowest digit</dt><dd>{(result.lowest_confidence * 100).toFixed(1)}%</dd></div></dl>
-              <div className="digit-results">{result.predictions.map((item) => <span key={item.position}>{item.digit}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
+              <div className="digit-results">{result.predictions.map((item) => (
+                <span key={item.position} className={item.confidence < threshold ? "uncertain" : undefined}>
+                  {item.digit}
+                  <small>{(item.confidence * 100).toFixed(1)}%</small>
+                  <div className="prob-bars">
+                    {item.probabilities.map((p, digit) => (
+                      <div key={digit} className={digit === item.digit ? "prob-row winner" : "prob-row"}>
+                        <span className="prob-label">{digit}</span>
+                        <span className="prob-bar" style={{ width: `${p * 100}%` }} />
+                      </div>
+                    ))}
+                  </div>
+                </span>
+              ))}</div>
             </div>
           ) : <div className="result"><p>Predicted characters · {result.model_label}</p><strong>{result.text || "(no text detected)"}</strong>
             <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>

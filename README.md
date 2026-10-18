@@ -110,8 +110,59 @@ python -m cnn_model.evaluate_uploads --manifest data/upload_examples.csv
 This produces `artifacts/upload_evaluation.json` with predictions, exact
 matches and segmentation length mismatches for each file. Include enough
 representative images for a meaningful Task 4 assessment, and separately
-inspect the React display in your browser. The upload command evaluates the
-API's currently configured model; it does not change the default model.
+inspect the React display in your browser. The upload command uses the CNN
+unless you pass `--model` with another key from `/api/models` (for example
+`--model svm`); it does not change the GUI's default model.
+
+## SVM baseline (Person D)
+
+A scikit-learn support vector machine is the second model family alongside the
+Keras networks. It sees each digit as a flat row of 784 pixels rather than a
+28x28 image, and `predict_proba` supplies the class probabilities shown in the
+GUI. Train it from the repo root:
+
+```bash
+python -m svm_model.train
+```
+
+This trains an RBF-kernel `SVC` on 10,000 MNIST training images, tests it on
+the 10,000 MNIST test images, and saves `artifacts/models/svm/svm_mnist.joblib`
+with `result.json`. Restart the API and choose **SVM (RBF)** under
+**Digits only (MNIST)**. The confidence threshold is set from its accuracy.
+
+### Comparison with the CNN on the benchmark set
+
+Both models run through the same API route, so segmentation and preprocessing
+are identical and only the classifier differs:
+
+```bash
+python -m preprocessing.build_benchmark_set
+python -m cnn_model.evaluate_uploads --manifest data/benchmark/manifest.csv --model cnn --output artifacts/benchmark_cnn.json
+python -m cnn_model.evaluate_uploads --manifest data/benchmark/manifest.csv --model svm --output artifacts/benchmark_svm.json
+```
+
+Results from one run (seed 42, 400 numbers of 1-4 digits built from MNIST test digits):
+
+| | Shallow CNN | SVM (RBF) |
+|---|---|---|
+| MNIST test accuracy (single 28x28 digits) | 98.90% | 96.21% |
+| Digit accuracy through the full pipeline (987 digits in correctly split numbers) | 98.07% | 93.82% |
+| Whole number correct, all 400 | 93.75% (375) | 84.00% (336) |
+| 1-digit numbers | 93% | 91% |
+| 2-digit numbers | 97% | 86% |
+| 3-digit numbers | 93% | 79% |
+| 4-digit numbers | 92% | 80% |
+| Segmentation length mismatches | 6 | 6 |
+
+- Both models had the same 6 length mismatches on the same images, so those
+  errors come from segmentation, not from either classifier.
+- Every digit in a number must be right, so number accuracy falls with length
+  roughly as digit accuracy to the power of the length (0.938^4 is about 0.77
+  for the SVM). Small per-digit gaps become large gaps on longer numbers.
+- The SVM loses more accuracy between clean MNIST and segmented crops (2.4
+  points against 0.8 for the CNN). The likely reason is that a pixel-by-pixel
+  model has little tolerance for the small shifts that segmentation and
+  re-centring introduce, whereas convolution and pooling absorb them.
 
 ## Research extension: letters and digits
 
@@ -204,3 +255,12 @@ The original digit models still use `/api/predict`, while the EMNIST character
 models use `/api/recognise-text`.
 
 Dataset reference: [NIST EMNIST](https://www.nist.gov/itl/products-and-services/emnist-dataset).
+
+## Requirements
+
+- **Python 3.10–3.13.** TensorFlow has no release for 3.14 yet, and `preprocessing.py`
+  uses `X | Y` type-annotation syntax that requires 3.10 or newer.
+- **Node.js 18 or newer** for the React interface.
+
+Create the environment with a supported interpreter explicitly, for example
+`py -3.12 -m venv .venv` on Windows or `python3.12 -m venv .venv` on macOS.

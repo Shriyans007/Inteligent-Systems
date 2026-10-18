@@ -9,7 +9,7 @@ import mimetypes
 from pathlib import Path
 
 
-def evaluate_manifest(manifest: Path, output: Path):
+def evaluate_manifest(manifest: Path, output: Path, model: str = "cnn"):
     # Call the same API route as React to include segmentation and preprocessing.
     from fastapi.testclient import TestClient
     from api.main import app
@@ -34,12 +34,15 @@ def evaluate_manifest(manifest: Path, output: Path):
                 raise ValueError(f"Invalid digit label: {label!r}")
             content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
             with path.open("rb") as handle:
-                response = client.post("/api/predict", files={"files": (path.name, handle, content_type)})
+                # Send the model choice exactly as the React selector does.
+                response = client.post("/api/predict", data={"model": model},
+                                       files={"files": (path.name, handle, content_type)})
             response.raise_for_status()
             predicted = response.json()["number"]
             details.append({"image": str(path), "expected": label, "predicted": predicted,
                             "correct": predicted == label, "length_match": len(predicted) == len(label)})
     summary = {
+        "model": model,
         "images": len(details),
         "single_digit": sum(len(row["expected"]) == 1 for row in details),
         "multi_digit": sum(len(row["expected"]) > 1 for row in details),
@@ -57,8 +60,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True, help="CSV containing image,label columns")
     parser.add_argument("--output", type=Path, default=Path("artifacts/upload_evaluation.json"))
+    parser.add_argument("--model", default="cnn", help="Model key listed by /api/models, e.g. cnn or svm")
     args = parser.parse_args()
-    evaluate_manifest(args.manifest, args.output)
+    evaluate_manifest(args.manifest, args.output, args.model)
 
 
 if __name__ == "__main__":

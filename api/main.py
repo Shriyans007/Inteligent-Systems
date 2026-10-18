@@ -24,8 +24,38 @@ MODEL_PATHS = {
     "mlp": Path("artifacts/mlp_mnist.keras"),
     "lenet5": Path("artifacts/models/lenet5/lenet5_mnist.keras"),
     "resnet": Path("artifacts/models/resnet/resnet_mnist.keras"),
+    "svm": Path("artifacts/models/svm/svm_mnist.joblib"),
 }
-MODEL_LABELS = {"cnn": "Shallow CNN", "mlp": "MLP", "lenet5": "LeNet-5", "resnet": "Small ResNet"}
+MODEL_LABELS = {"cnn": "Shallow CNN", "mlp": "MLP", "lenet5": "LeNet-5", "resnet": "Small ResNet",
+                "svm": "SVM (RBF)"}
+# These come from scikit-learn, not Keras: they load with joblib and take flat 784-pixel input.
+SKLEARN_MODELS = {"svm"}
+
+ACCURACY_SOURCES = {
+    "cnn": (Path("artifacts/comparison.json"), "CNN selected"),
+    "mlp": (Path("artifacts/comparison.json"), "MLP baseline"),
+    "lenet5": (Path("artifacts/models/lenet5/result.json"), None),
+    "resnet": (Path("artifacts/models/resnet/result.json"), None),
+    "svm": (Path("artifacts/models/svm/result.json"), None),
+}
+
+
+def model_accuracy(model_key: str):
+    """Read the saved test accuracy so the GUI can set a threshold from it."""
+    path, label = ACCURACY_SOURCES.get(model_key, (None, None))
+    if path is None or not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    records = data if isinstance(data, list) else [data]
+    for row in records:
+        if label is None or row.get("model") == label:
+            value = row.get("test_accuracy")
+            return float(value) if value is not None else None
+    return None
+
 # Make sure you keep the previously documented environment override for known models.
 _configured_path = Path(os.getenv("HNRS_MODEL_PATH", str(MODEL_PATHS["cnn"])))
 DEFAULT_MODEL = next((key for key, path in MODEL_PATHS.items() if path == _configured_path), "cnn")
@@ -51,8 +81,24 @@ def get_model(model_key: str = DEFAULT_MODEL):
     if not path.is_file():
         raise HTTPException(status_code=503, detail=f"{MODEL_LABELS[model_key]} is not trained at {path}.")
     if model_key not in _models:
-        _models[model_key] = _keras().models.load_model(path)
+        if model_key in SKLEARN_MODELS:
+            import joblib
+            _models[model_key] = joblib.load(path)
+        else:
+            _models[model_key] = _keras().models.load_model(path)
     return _models[model_key]
+
+
+def predict_probabilities(classifier, model_key: str, batch: np.ndarray) -> np.ndarray:
+    """Return an (n, 10) probability array, whichever library the model comes from."""
+    if model_key in SKLEARN_MODELS:
+        # The SVM was trained on flat rows of 784 pixels, not 28x28x1 images.
+        scores = classifier.predict_proba(batch.reshape(len(batch), -1))
+        # predict_proba orders its columns by classes_, so place each one under its digit.
+        probabilities = np.zeros((len(batch), 10), dtype=np.float32)
+        probabilities[:, classifier.classes_.astype(int)] = scores
+        return probabilities
+    return classifier.predict(batch, verbose=0)
 
 
 @app.on_event("startup")
@@ -74,7 +120,8 @@ def health() -> dict[str, str | bool]:
 def available_models() -> dict:
     """Let the GUI disable models that have not been trained locally."""
     return {"default_model": DEFAULT_MODEL,
-            "models": [{"key": key, "label": MODEL_LABELS[key], "available": path.is_file()}
+            "models": [{"key": key, "label": MODEL_LABELS[key], "available": path.is_file(),
+                        "accuracy": model_accuracy(key)}
                        for key, path in MODEL_PATHS.items()]}
 
 
@@ -109,7 +156,7 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
 
         # Run one batch prediction rather than calling TensorFlow once per file.
         batch = np.concatenate(prepared_images, axis=0)
-        batch_probabilities = classifier.predict(batch, verbose=0)
+        batch_probabilities = predict_probabilities(classifier, model, batch)
         predictions = []
         for position, (filename, probabilities) in enumerate(zip(filenames, batch_probabilities)):
             digit = int(probabilities.argmax())
@@ -139,7 +186,8 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
     }
 
 
-CHARACTER_PATHS = {key: model_paths(key)[1:] for key in MODEL_PATHS}
+# The SVM only knows digits, so it is not offered as a letter-and-digit model.
+CHARACTER_PATHS = {key: model_paths(key)[1:] for key in MODEL_PATHS if key not in SKLEARN_MODELS}
 _extension_models = {}
 
 

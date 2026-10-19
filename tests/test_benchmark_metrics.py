@@ -85,3 +85,16 @@ def test_save_outputs_writes_one_comparison_csv_for_all_models(tmp_path):
     assert [(r["model"], r["digits"]) for r in rows] == [
         ("cnn", "1"), ("cnn", "2"), ("cnn", "all"), ("svm", "1"), ("svm", "2"), ("svm", "all")]
     assert rows[-1]["exact_accuracy"] == "0.5"
+
+
+def test_load_results_explains_missing_file(tmp_path):
+    missing = tmp_path / "benchmark_svm.json"
+    with pytest.raises(FileNotFoundError, match="evaluate_uploads"):
+        load_results([missing])
+
+
+def test_load_results_rejects_file_without_cases(tmp_path):
+    wrong = tmp_path / "comparison.json"
+    wrong.write_text(json.dumps([{"model": "CNN selected", "test_accuracy": 0.99}]))
+    with pytest.raises(ValueError, match="cases"):
+        load_results([wrong])

@@ -1,0 +1,165 @@
+"""
+Task 4 - Benchmark metrics
+
+Summarises one or more results files from cnn_model/evaluate_uploads.py:
+exact accuracy, digit accuracy, character error rate and segmentation vs
+classifier errors, split by number length. With several files (one per model)
+it also builds a single comparison table.
+
+Run from the repo root:
+  python3 -m preprocessing.benchmark_metrics --results artifacts/benchmark_cnn.json artifacts/benchmark_svm.json
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+from collections import Counter
+from pathlib import Path
+
+FIELDS = ["model", "digits", "images", "exact_accuracy", "digit_accuracy", "character_error_rate",
+          "segmentation_errors", "classifier_errors"]
+
+
+def edit_distance(expected: str, predicted: str) -> int:
+    # levenshtein distance, so one missing digit counts as one error not a whole wrong number
+    previous = list(range(len(predicted) + 1))
+    for i, expected_digit in enumerate(expected, start=1):
+        current = [i]
+        for j, predicted_digit in enumerate(predicted, start=1):
+            cost = 0 if expected_digit == predicted_digit else 1
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost))
+        previous = current
+    return previous[-1]
+
+
+def _metrics_for(cases) -> dict:
+    total = len(cases)
+    exact = sum(case["expected"] == case["predicted"] for case in cases)
+    length_errors = sum(len(case["expected"]) != len(case["predicted"]) for case in cases)
+    # right digit count but still wrong means the classifier got a digit wrong
+    classifier_errors = total - exact - length_errors
+
+    # only count digits when the lengths match, otherwise they don't line up
+    aligned = [case for case in cases if len(case["expected"]) == len(case["predicted"])]
+    aligned_digits = sum(len(case["expected"]) for case in aligned)
+    correct_digits = sum(e == p for case in aligned for e, p in zip(case["expected"], case["predicted"]))
+
+    expected_digits = sum(len(case["expected"]) for case in cases)
+    edits = sum(edit_distance(case["expected"], case["predicted"]) for case in cases)
+
+    return {
+        "images": total,
+        "exact_matches": exact,
+        "exact_accuracy": exact / total if total else 0.0,
+        "digit_accuracy": correct_digits / aligned_digits if aligned_digits else None,
+        "character_error_rate": edits / expected_digits if expected_digits else 0.0,
+        "segmentation_errors": length_errors,
+        "classifier_errors": classifier_errors,
+    }
+
+
+def summarise(cases) -> dict:
+    if not cases:
+        raise ValueError("No cases to summarise")
+    by_length = {}
+    for length in sorted({len(case["expected"]) for case in cases}):
+        group = [case for case in cases if len(case["expected"]) == length]
+        by_length[length] = _metrics_for(group)
+
+    confusions = Counter()
+    for case in cases:
+        if len(case["expected"]) == len(case["predicted"]):
+            for e, p in zip(case["expected"], case["predicted"]):
+                if e != p:
+                    confusions[f"{e}->{p}"] += 1
+
+    return {
+        "overall": _metrics_for(cases),
+        "by_length": by_length,
+        "top_confusions": confusions.most_common(10),
+    }
+
+
+def shared_segmentation_errors(results: dict) -> list:
+    """Images with the wrong digit count for every model. Since all models share the
+    same segmentation step, these point at segmentation rather than a classifier."""
+    per_model = [
+        {case["image"] for case in cases if len(case["expected"]) != len(case["predicted"])}
+        for cases in results.values()
+    ]
+    return sorted(set.intersection(*per_model)) if per_model else []
+
+
+def comparison_rows(summaries: dict) -> list:
+    rows = []
+    for model, summary in summaries.items():
+        groups = list(summary["by_length"].items()) + [("all", summary["overall"])]
+        for length, metrics in groups:
+            rows.append({"model": model, "digits": length, **{f: metrics[f] for f in FIELDS[2:]}})
+    return rows
+
+
+def save_outputs(summaries: dict, shared: list, output_dir: Path) -> tuple[Path, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "benchmark_summary.json"
+    json_path.write_text(json.dumps({"models": summaries, "shared_segmentation_errors": shared}, indent=2),
+                         encoding="utf-8")
+
+    csv_path = output_dir / "benchmark_comparison.csv"
+    with csv_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=FIELDS)
+        writer.writeheader()
+        for row in comparison_rows(summaries):
+            writer.writerow({key: _round(value) for key, value in row.items()})
+    return json_path, csv_path
+
+
+def _round(value):
+    if value is None:
+        return "n/a"
+    return round(value, 4) if isinstance(value, float) else value
+
+
+def _percent(value) -> str:
+    return "n/a" if value is None else f"{value:.2%}"
+
+
+def load_results(paths) -> dict:
+    results = {}
+    for path in paths:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        # older results files don't record the model, so fall back to the file name
+        model = data.get("model") or Path(path).stem
+        results[model] = data["cases"]
+    return results
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Summarise benchmark results from evaluate_uploads.py.")
+    parser.add_argument("--results", type=Path, nargs="+", default=[Path("artifacts/benchmark_evaluation.json")])
+    parser.add_argument("--output", type=Path, default=Path("artifacts/benchmark"))
+    args = parser.parse_args()
+
+    results = load_results(args.results)
+    summaries = {model: summarise(cases) for model, cases in results.items()}
+    shared = shared_segmentation_errors(results)
+    json_path, csv_path = save_outputs(summaries, shared, args.output)
+
+    print(f"{'model':>8} {'digits':>6} {'images':>6} {'exact':>7} {'digit':>7} {'CER':>7} {'seg err':>8} {'clf err':>8}")
+    for row in comparison_rows(summaries):
+        print(f"{row['model']:>8} {row['digits']:>6} {row['images']:>6} {_percent(row['exact_accuracy']):>7} "
+              f"{_percent(row['digit_accuracy']):>7} {row['character_error_rate']:>7.3f} "
+              f"{row['segmentation_errors']:>8} {row['classifier_errors']:>8}")
+    for model, summary in summaries.items():
+        if summary["top_confusions"]:
+            top = ", ".join(f"{pair} ({count})" for pair, count in summary["top_confusions"][:5])
+            print(f"Most common confusions for {model}: {top}")
+    if len(results) > 1:
+        print(f"Wrong digit count for every model: {len(shared)} image(s)")
+    print(f"Saved {json_path} and {csv_path}")
+
+
+if __name__ == "__main__":
+    main()

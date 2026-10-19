@@ -129,9 +129,15 @@ def _percent(value) -> str:
 def load_results(paths) -> dict:
     results = {}
     for path in paths:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        path = Path(path)
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"Can't find {path}. Run cnn_model.evaluate_uploads with --output {path} first.")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or "cases" not in data:
+            raise ValueError(f"{path} has no 'cases', so it doesn't look like evaluate_uploads output")
         # older results files don't record the model, so fall back to the file name
-        model = data.get("model") or Path(path).stem
+        model = data.get("model") or path.stem
         results[model] = data["cases"]
     return results
 
@@ -142,7 +148,11 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("artifacts/benchmark"))
     args = parser.parse_args()
 
-    results = load_results(args.results)
+    try:
+        results = load_results(args.results)
+    except (FileNotFoundError, ValueError) as error:
+        # print a short message instead of a full traceback
+        raise SystemExit(f"Error: {error}")
     summaries = {model: summarise(cases) for model, cases in results.items()}
     shared = shared_segmentation_errors(results)
     json_path, csv_path = save_outputs(summaries, shared, args.output)

@@ -169,6 +169,42 @@ Results from one run (seed 42, 400 numbers of 1-4 digits built from MNIST test d
   model has little tolerance for the small shifts that segmentation and
   re-centring introduce, whereas convolution and pooling absorb them.
 
+### Letters and digits (EMNIST)
+
+The same SVM can also be trained on EMNIST ByClass (62 classes: 10 digits, 26
+upper-case and 26 lower-case letters) and chosen under **Letters and digits**:
+
+```bash
+python -m svm_model.train_emnist
+```
+
+It uses the networks' EMNIST loader, so images are oriented the same way, and
+saves `emnist_svm.joblib`, `mapping.json`, `results.json`, `per_character.csv`
+and `confusion_matrix.csv` under `artifacts/text/character/svm/`. Training uses
+a random 20,000 of the 697,932 training images, because RBF SVM training time
+grows quickly with data size. Scoring uses a random 20,000 of the 116,323 test
+images (`--test-samples 0` scores all of them, slowly); the networks are scored
+on the full test set.
+
+Results from one run (seed 42, 188 s training):
+
+| | SVM (RBF) |
+|---|---|
+| Test accuracy, all 62 classes | 77.89% |
+| Digits (9,946 test images) | 93.15% |
+| Upper-case letters (5,384) | 67.38% |
+| Lower-case letters (4,670) | 57.49% |
+| Accuracy if upper and lower case of a letter count as the same | 81.58% |
+
+- The most common errors are characters that look the same in another class:
+  l read as 1 (401 times), O as 0 (352), I as 1 (223) and 0 as O (163).
+- 738 of the 4,422 errors only confuse the case of the same letter, such as m
+  and M or u and U. Without context a lone handwritten c and C have the same
+  shape, so the model favours the class it saw more often.
+- Lower-case c, f, i, m, o, s and u were never predicted correctly in this run.
+  EMNIST ByClass is unbalanced: digits are about half of the images (9,946 of
+  these 20,000), so the SVM leans towards digits and capitals when shapes overlap.
+
 ## Research extension: letters and digits
 
 The four existing MNIST classifiers (MLP, shallow CNN, LeNet-5 and small

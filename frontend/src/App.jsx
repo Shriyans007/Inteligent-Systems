@@ -3,6 +3,47 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const allowedTypes = ["image/png", "image/jpeg", "image/bmp", "image/webp"];
 const fallbackModels = [{ key: "cnn", label: "Shallow CNN", available: false }];
 
+// Draws where the segmenter cut each image: a box and label for every piece and, for the
+// learned segmenter, its cut lines and its probability of a cut along the image.
+function SegmentView({ result, urls }) {
+  return (
+    <section className="segment-view" aria-label="How the image was segmented">
+      <h3>How the image was cut into pieces</h3>
+      {result.images.map((info, index) => {
+        const fontSize = Math.max(14, info.height * 0.14);
+        return (
+          <figure key={index}>
+            <div className="segment-frame" style={{ aspectRatio: `${info.width} / ${info.height}` }}>
+              {urls[index] && <img src={urls[index]} alt={`Input image ${index + 1}`} />}
+              <svg viewBox={`0 0 ${info.width} ${info.height}`} preserveAspectRatio="none">
+                {info.cuts?.map((x, cut) => (
+                  <line key={cut} x1={x} x2={x} y1={0} y2={info.height} className="segment-cut" vectorEffect="non-scaling-stroke" />
+                ))}
+                {result.predictions.filter((item) => item.image === index && item.bbox).map((item) => {
+                  const [x, y, width, height] = item.bbox;
+                  return (
+                    <g key={item.position}>
+                      <rect x={x} y={y} width={width} height={height} className="segment-box" vectorEffect="non-scaling-stroke" />
+                      <text x={x + 3} y={y + fontSize} fontSize={fontSize} className="segment-label">{item.digit ?? item.character}</text>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+            {info.profile && <>
+              <svg className="cut-profile" viewBox={`0 0 ${info.width} 100`} preserveAspectRatio="none" aria-label="Cut probability along the image">
+                <line x1={0} x2={info.width} y1={50} y2={50} className="cut-threshold" vectorEffect="non-scaling-stroke" />
+                <polyline points={info.profile.map(([x, p]) => `${x},${100 - p * 100}`).join(" ")} className="cut-curve" vectorEffect="non-scaling-stroke" />
+              </svg>
+              <figcaption>Blue: the CNN's probability of a cut at each column. Dashed: 50%. Red lines: where it cut (a cut through empty space changes nothing).</figcaption>
+            </>}
+          </figure>
+        );
+      })}
+    </section>
+  );
+}
+
 export default function App() {
   const [source, setSource] = useState("draw");
   const [files, setFiles] = useState([]);
@@ -17,6 +58,7 @@ export default function App() {
   const [threshold, setThreshold] = useState(0.5);
   const [segmenters, setSegmenters] = useState({ defaults: {}, segmenters: [] });
   const [segmentation, setSegmentation] = useState("");
+  const [submitted, setSubmitted] = useState([]);
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
   const pointerRef = useRef(null);
@@ -127,6 +169,8 @@ export default function App() {
     else body.append("file", files[0]);
     body.append("model", modelKey);
     if (chosenSegmentation) body.append("segmentation", chosenSegmentation);
+    // Keep the images that were sent, so the segmentation can be drawn on top of them.
+    setSubmitted(source === "draw" ? [canvasRef.current.toDataURL("image/png")] : previews);
     try {
       const response = await fetch(family === "numbers" ? "/api/predict" : "/api/recognise-text", { method: "POST", body });
       const data = await response.json().catch(() => null);
@@ -234,6 +278,7 @@ export default function App() {
             <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>
             <div className="digit-results">{result.predictions?.map((item) => <span key={item.position}>{item.character}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
           </div>}
+          {result?.images && <SegmentView result={result} urls={submitted} />}
           {error && <p className="error" role="alert">{error}</p>}
           <div className="result-actions">
             <button onClick={recognise} disabled={loading || !modelReady || (source === "upload" ? !files.length : !drawn)}>

@@ -117,7 +117,30 @@ SEGMENTERS = {
     "components": ("Connected components", {"method": "connected_components", "split_touching": False}),
     "contours_split": ("Contours + split touching", {"method": "contours", "split_touching": True}),
     "contours": ("Contours", {"method": "contours", "split_touching": False}),
+    # Not rule-based: a trained CNN predicts where one digit ends and the next begins.
+    "learned_cuts": ("Learned cut-point CNN", {"method": "learned"}),
 }
+SEGMENTER_MODEL_PATH = Path("artifacts/models/segmenter/cutpoint_cnn.keras")
+_segmenter_models = {}
+
+
+def segmenter_available(key: str) -> bool:
+    """Rule-based methods always work; the learned one needs its trained model file."""
+    return SEGMENTERS[key][1]["method"] != "learned" or SEGMENTER_MODEL_PATH.is_file()
+
+
+def run_segmenter(image, options: dict):
+    """Cut an image into character crops with the chosen method."""
+    if options["method"] != "learned":
+        return segment(image, **options)
+    if not SEGMENTER_MODEL_PATH.is_file():
+        raise HTTPException(status_code=503, detail="Train the segmentation model first: "
+                                                    "python -m segmentation_model.train")
+    if "cutpoint" not in _segmenter_models:
+        # compile=False: the model is only used for prediction, so its custom loss is not needed.
+        _segmenter_models["cutpoint"] = _keras().models.load_model(SEGMENTER_MODEL_PATH, compile=False)
+    from segmentation_model.segment import segment_learned
+    return segment_learned(image, _segmenter_models["cutpoint"])
 # Each route keeps the segmentation it used before the choice existed.
 DEFAULT_SEGMENTATION = {"numbers": "components_split", "characters": "components"}
 
@@ -159,7 +182,8 @@ def available_models() -> dict:
 def segmenters() -> dict:
     """Let the GUI list the segmentation methods and each route's default."""
     return {"defaults": DEFAULT_SEGMENTATION,
-            "segmenters": [{"key": key, "label": label} for key, (label, _) in SEGMENTERS.items()]}
+            "segmenters": [{"key": key, "label": label, "available": segmenter_available(key)}
+                           for key, (label, _) in SEGMENTERS.items()]}
 
 
 @app.post("/api/predict")
@@ -183,7 +207,7 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
             image = Image.open(io.BytesIO(content))
             # The segmenter handles a whole number; each crop then gets the
             # same 28x28 input preparation as an uploaded single digit.
-            crops = segment(image, **segment_options)
+            crops = run_segmenter(image, segment_options)
             if crops:
                 prepared_images.extend(crops_to_model_input(crops))
                 filenames.extend(f"{upload.filename} #{crop.index + 1}" for crop in crops)
@@ -281,7 +305,7 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
         with Image.open(io.BytesIO(content)) as image:
             image.verify()
         with Image.open(io.BytesIO(content)) as image:
-            crops = segment(image, **segment_options)
+            crops = run_segmenter(image, segment_options)
             if not crops:
                 raise ValueError("The image does not contain visible writing.")
             if len(crops) > 30:

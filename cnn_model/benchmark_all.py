@@ -33,7 +33,8 @@ def main() -> None:
     import api.main as api
 
     models = args.models or [key for key, path in api.MODEL_PATHS.items() if path.is_file()]
-    methods = args.segmentation or list(api.SEGMENTERS)
+    # Skip the learned segmenter until its model has been trained.
+    methods = args.segmentation or [key for key in api.SEGMENTERS if api.segmenter_available(key)]
     if not models:
         raise SystemExit("No trained digit models found. Train one first, e.g. python -m cnn_model.train_compare")
 

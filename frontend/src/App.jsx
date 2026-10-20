@@ -199,7 +199,9 @@ export default function App() {
           {segmenters.segmenters.length > 0 && <label className="model-selector" htmlFor="segmentation-choice"><span>Segmentation method</span>
             <select id="segmentation-choice" value={chosenSegmentation} disabled={loading}
               onChange={(event) => { setSegmentation(event.target.value); setResult(null); }}>
-              {segmenters.segmenters.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+              {segmenters.segmenters.map((item) => <option key={item.key} value={item.key} disabled={item.available === false}>
+                {item.label}{item.available === false ? " (not trained)" : ""}
+              </option>)}
             </select>
           </label>}
           {family === "numbers" && <label className="threshold-control" htmlFor="threshold-choice">

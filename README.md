@@ -205,6 +205,57 @@ Results from one run (seed 42, 188 s training):
   EMNIST ByClass is unbalanced: digits are about half of the images (9,946 of
   these 20,000), so the SVM leans towards digits and capitals when shapes overlap.
 
+## Benchmark: every digit model with every segmentation method
+
+The GUI and `/api/predict` accept a `segmentation` choice: connected components or
+contours, each with or without splitting touching digits. `GET /api/segmenters`
+lists them. One command runs every trained digit model with every segmentation
+method on the 400-number benchmark set, through the real API, and summarises the
+runs with `preprocessing.benchmark_metrics`:
+
+```bash
+python -m preprocessing.build_benchmark_set
+python -m cnn_model.benchmark_all
+```
+
+Results are saved in `artifacts/benchmark/all/` (`benchmark_comparison.csv`,
+`benchmark_summary.json` and one file per run). These results replace the
+two-model table above: the networks have since been trained in full (12 epochs
+with early stopping), and SVM digits now come from `predict()`.
+
+Results from one run (seed 42). Every segmentation method gave each model the same
+number of fully correct numbers, so the table shows one row per model (character
+error rate is for the methods without splitting; with splitting it is 0.001 higher
+because of one image):
+
+| Model | MNIST test accuracy | Numbers fully correct (of 400) | Digit accuracy | Character error rate | Seconds per 400 |
+|---|---|---|---|---|---|
+| Small ResNet | 98.63% | 94.75% (379) | 98.48% | 0.021 | ~8.8 |
+| Shallow CNN | 99.34% | 94.50% (378) | 98.28% | 0.023 | ~8.5 |
+| LeNet-5 | 98.78% | 93.75% (375) | 98.07% | 0.025 | ~8.4 |
+| MLP | 97.86% | 89.00% (356) | 95.95% | 0.047 | ~8.4 |
+| SVM (RBF) | 96.21% | 82.50% (330) | 93.21% | 0.073 | ~2.6 |
+
+- **Segmentation choice made no difference on this benchmark.** The benchmark
+  places digits with gaps between them, so no digits touch and both methods find
+  the same blobs. It therefore cannot show the value of splitting touching
+  digits; hand-drawn input in the GUI is needed for that.
+- **All 6 segmentation errors are over-segmentation**, the same 6 images for every
+  model and method: a digit drawn in separate strokes is cut into two pieces
+  (9 read as 91 and 99, 4 as 41, 75 as 754, 5985 as 59875, 2573 as 25673). On
+  5985, splitting touching digits cut a piece again (598275), which made it worse.
+- **Models without convolution lose most from clean MNIST to segmented crops:**
+  digit accuracy fell 3.00 points for the SVM and 1.91 for the MLP, against 0.15
+  to 1.06 for the three convolutional networks. Convolution and pooling tolerate
+  the small shifts that cropping introduces; pixel-by-pixel models do not.
+- **ResNet, CNN and LeNet-5 are within 4 numbers of each other**, too close to rank
+  on 400 images. The CNN is best on MNIST, ResNet on the benchmark.
+- **The SVM decision rule matters.** Switching SVM digits from the highest
+  `predict_proba` score to `predict()` changed 10 benchmark predictions: 6
+  became wrong and none became right (84.00% to 82.50%). `predict()` stays because
+  it is the rule the reported 96.21% test accuracy was measured with.
+- The SVM is about three times faster per request, because it skips TensorFlow.
+
 ## Research extension: letters and digits
 
 The four existing MNIST classifiers (MLP, shallow CNN, LeNet-5 and small

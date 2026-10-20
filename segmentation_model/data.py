@@ -37,7 +37,7 @@ def compose(digits, rng: np.random.Generator, touching: float = 0.4):
     digits do not fit in the training width.
     """
     canvas = np.zeros((HEIGHT, WIDTH), dtype=np.uint8)
-    boundaries = []
+    boundaries, gaps = [], []
     x, right = int(rng.integers(2, 16)), None
     for digit in digits:
         piece = ink_crop(np.asarray(digit, dtype=np.uint8))
@@ -49,9 +49,13 @@ def compose(digits, rng: np.random.Generator, touching: float = 0.4):
         if right is not None:
             # A negative gap makes digits touch or overlap: the case the rule-based
             # segmenter cannot cut, and the main reason to learn where cuts go.
-            gap = int(rng.integers(-6, 0)) if rng.random() < touching else int(rng.integers(1, 11))
+            # Gaps go up to 30 columns: the first model only saw gaps up to 10, so it never
+            # learned to cut the wider gaps in real images and merged neighbouring digits.
+            gap = int(rng.integers(-6, 0)) if rng.random() < touching else int(rng.integers(1, 31))
             x = right + gap
             boundaries.append((right + x) / 2)   # middle of the gap, or of the overlap
+            if gap > 0:
+                gaps.append((right, x))
         if x < 0 or x + w > WIDTH:
             return None
         y = int(np.clip((HEIGHT - h) // 2 + rng.integers(-2, 3), 0, HEIGHT - h))
@@ -63,6 +67,9 @@ def compose(digits, rng: np.random.Generator, touching: float = 0.4):
     for boundary in boundaries:
         centre = int(round(boundary))
         labels[max(0, centre - BAND):centre + BAND + 1] = 1
+    for start, end in gaps:
+        # Every empty column between two digits is a correct place to cut, however wide the gap.
+        labels[start:end] = 1
     return canvas, labels, boundaries
 
 

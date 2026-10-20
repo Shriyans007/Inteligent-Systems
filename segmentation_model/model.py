@@ -6,7 +6,7 @@ from cnn_model.models import _keras
 
 from .data import HEIGHT
 
-POSITIVE_WEIGHT = 10.0   # cut columns are rare, so missing one costs more than a false alarm
+POSITIVE_WEIGHT = 4.0    # cut columns are now about 11% of columns (wide gaps), so a smaller boost
 
 
 def build_cutpoint_model():

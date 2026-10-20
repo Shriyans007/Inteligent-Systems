@@ -44,6 +44,15 @@ def test_compose_labels_one_cut_per_boundary():
     assert len(find_cuts(labels)) == 2
 
 
+def test_wide_gaps_are_labelled_as_one_cut():
+    rng = np.random.default_rng(3)
+    image, labels, boundaries = compose([block_digit(10)] * 2, rng, touching=0.0)
+    inked = np.where(image.max(axis=0) > 0)[0]
+    between = [c for c in range(inked[0], inked[-1]) if image[:, c].max() == 0]
+    assert between and labels[between].all()
+    assert len(find_cuts(labels)) == len(boundaries) == 1
+
+
 def test_find_cuts_returns_the_centre_of_each_run():
     assert find_cuts(np.array([0, 0.9, 0.9, 0.9, 0, 0, 0.8, 0])) == [2.0, 6.0]
     assert find_cuts(np.zeros(10)) == []

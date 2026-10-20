@@ -16,8 +16,8 @@ import numpy as np
 from cnn_model.models import _keras
 
 from .data import make_dataset
+from .evaluate import piece_counts, test_sets
 from .model import build_cutpoint_model, compile_cutpoint_model
-from .segment import find_cuts
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,32 +49,11 @@ def batches(keras, images, labels, batch_size: int = 64):
     return Batches()
 
 
-def score(model, images, boundaries, tolerance: float = 3.0) -> dict:
-    """How often the predicted cuts match the true digit boundaries."""
-    probabilities = model.predict(images[..., None].astype(np.float32) / 255.0, verbose=0)[:, 0, :, 0]
-    right_count = matched = predicted = actual = 0
-    for row, truth in zip(probabilities, boundaries):
-        cuts = find_cuts(row)
-        right_count += len(cuts) == len(truth)
-        unused = list(truth)
-        for cut in cuts:
-            near = [b for b in unused if abs(b - cut) <= tolerance]
-            if near:
-                unused.remove(near[0])
-                matched += 1
-        predicted += len(cuts)
-        actual += len(truth)
-    return {"right_number_of_pieces": right_count / len(boundaries),
-            "cut_precision": matched / predicted if predicted else 1.0,
-            "cut_recall": matched / actual if actual else 1.0,
-            "images": len(boundaries)}
-
-
 def main() -> None:
     args = parse_args()
     keras = _keras()
     keras.utils.set_random_seed(args.seed)
-    (train_digits, train_labels), (test_digits, test_labels) = keras.datasets.mnist.load_data()
+    (train_digits, train_labels), _ = keras.datasets.mnist.load_data()
     # Training and validation numbers use different MNIST training digits; the test
     # numbers use MNIST test digits, which the model never sees during training.
     cut = int(len(train_digits) * 0.9)
@@ -88,8 +67,6 @@ def main() -> None:
                         callbacks=[keras.callbacks.EarlyStopping(patience=2, restore_best_weights=True)])
     seconds = time.perf_counter() - started
 
-    mixed = make_dataset(test_digits, test_labels, args.test, args.seed + 2, touching=0.4, min_digits=2)
-    touching = make_dataset(test_digits, test_labels, args.test, args.seed + 3, touching=1.0, min_digits=2)
     args.output.mkdir(parents=True, exist_ok=True)
     model_path = args.output / "cutpoint_cnn.keras"
     model.save(model_path)
@@ -101,8 +78,9 @@ def main() -> None:
         "parameters": int(model.count_params()),
         "train_images": args.train,
         "seed": args.seed,
-        "test_mixed_gaps_and_touching": score(model, mixed[0], mixed[2]),
-        "test_all_touching": score(model, touching[0], touching[2]),
+        # Judged by the pieces segment_learned() actually returns, as in the API.
+        **{f"test_{name}": piece_counts(model, data[0], data[3])
+           for name, data in test_sets(args.seed, args.test).items()},
         "model_path": str(model_path),
     }
     (args.output / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")

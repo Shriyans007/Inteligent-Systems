@@ -129,7 +129,7 @@ def segmenter_available(key: str) -> bool:
     return SEGMENTERS[key][1]["method"] != "learned" or SEGMENTER_MODEL_PATH.is_file()
 
 
-def run_segmenter(image, options: dict):
+def run_segmenter(image, options: dict, details: dict | None = None):
     """Cut an image into character crops with the chosen method."""
     if options["method"] != "learned":
         return segment(image, **options)
@@ -140,7 +140,7 @@ def run_segmenter(image, options: dict):
         # compile=False: the model is only used for prediction, so its custom loss is not needed.
         _segmenter_models["cutpoint"] = _keras().models.load_model(SEGMENTER_MODEL_PATH, compile=False)
     from segmentation_model.segment import segment_learned
-    return segment_learned(image, _segmenter_models["cutpoint"])
+    return segment_learned(image, _segmenter_models["cutpoint"], details=details)
 # Each route keeps the segmentation it used before the choice existed.
 DEFAULT_SEGMENTATION = {"numbers": "components_split", "characters": "components"}
 
@@ -198,6 +198,7 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
         classifier = get_model(model)
         prepared_images = []
         filenames = []
+        boxes, image_info = [], []
         for upload in files:
             if upload.content_type not in {"image/png", "image/jpeg", "image/bmp", "image/webp"}:
                 raise HTTPException(status_code=415, detail=f"{upload.filename} is not a supported image.")
@@ -207,27 +208,36 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
             image = Image.open(io.BytesIO(content))
             # The segmenter handles a whole number; each crop then gets the
             # same 28x28 input preparation as an uploaded single digit.
-            crops = run_segmenter(image, segment_options)
+            details = {}
+            crops = run_segmenter(image, segment_options, details)
+            # The upload's size and each piece's box let the GUI draw the segmentation.
+            image_info.append({"filename": upload.filename, "width": image.width, "height": image.height,
+                               **details})
             if crops:
                 prepared_images.extend(crops_to_model_input(crops))
                 filenames.extend(f"{upload.filename} #{crop.index + 1}" for crop in crops)
+                boxes.extend((len(image_info) - 1, crop.bbox) for crop in crops)
             else:
                 # Some MNIST-style images have a dark full-image background,
                 # so segmentation may correctly find no separate dark region.
                 prepared_images.append(prepare_mnist_digit(image))
                 filenames.append(upload.filename)
+                boxes.append((len(image_info) - 1, (0, 0, image.width, image.height)))
 
         # Run one batch prediction rather than calling TensorFlow once per file.
         batch = np.concatenate(prepared_images, axis=0)
         batch_probabilities = predict_probabilities(classifier, model, batch)
         digits = predicted_digits(classifier, model, batch, batch_probabilities)
         predictions = []
-        for position, (filename, probabilities, predicted) in enumerate(zip(filenames, batch_probabilities, digits)):
+        for position, (filename, probabilities, predicted, (image_index, bbox)) in enumerate(
+                zip(filenames, batch_probabilities, digits, boxes)):
             digit = int(predicted)
             predictions.append(
                 {
                     "position": position,
                     "filename": filename,
+                    "image": image_index,
+                    "bbox": [int(value) for value in bbox],
                     "digit": digit,
                     "confidence": float(probabilities[digit]),
                     "probabilities": [float(value) for value in probabilities],
@@ -248,6 +258,7 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
         "number": "".join(str(item["digit"]) for item in predictions),
         "average_confidence": sum(item["confidence"] for item in predictions) / len(predictions),
         "lowest_confidence": min(item["confidence"] for item in predictions),
+        "images": image_info,
         "predictions": predictions,
     }
 
@@ -305,7 +316,9 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
         with Image.open(io.BytesIO(content)) as image:
             image.verify()
         with Image.open(io.BytesIO(content)) as image:
-            crops = run_segmenter(image, segment_options)
+            details = {}
+            crops = run_segmenter(image, segment_options, details)
+            image_info = [{"filename": file.filename, "width": image.width, "height": image.height, **details}]
             if not crops:
                 raise ValueError("The image does not contain visible writing.")
             if len(crops) > 30:
@@ -320,12 +333,13 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
         predictions = []
         for position, (scores, index) in enumerate(zip(probabilities, indexes)):
             index = int(index)
-            predictions.append({"position": position, "character": mapping[str(index)], "confidence": float(scores[index])})
+            predictions.append({"position": position, "character": mapping[str(index)], "confidence": float(scores[index]),
+                                "image": 0, "bbox": [int(value) for value in crops[position].bbox]})
         return {"mode": "character", "model": model, "model_label": MODEL_LABELS[model],
                 "segmentation": segmenter, "segmentation_label": SEGMENTERS[segmenter][0],
                 "text": "".join(item["character"] for item in predictions),
                 "confidence": sum(item["confidence"] for item in predictions)/len(predictions),
-                "predictions": predictions}
+                "images": image_info, "predictions": predictions}
     except HTTPException:
         raise
     except (OSError, ValueError, KeyError) as exc:

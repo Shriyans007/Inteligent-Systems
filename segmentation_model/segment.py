@@ -49,11 +49,13 @@ def model_input(gray: np.ndarray, ink: np.ndarray):
 
 
 def segment_learned(image, model, threshold: float = 0.5, padding: int = 2,
-                    min_ink: float = 0.02) -> List[CharacterCrop]:
+                    min_ink: float = 0.02, details: dict | None = None) -> List[CharacterCrop]:
     """Cut a number image where the model predicts digit boundaries.
 
     Returns the same CharacterCrop objects as segmentation.segment(), so the crops go
-    through exactly the same preprocessing and recognition afterwards.
+    through exactly the same preprocessing and recognition afterwards. If `details` is
+    a dict, it is filled with the cut positions and the cut probability of each model
+    column, in the original image's x coordinates, so the GUI can draw them.
     """
     gray = _to_grayscale_array(image)
     ink = _binary_for_detection(gray) > 0
@@ -68,6 +70,10 @@ def segment_learned(image, model, threshold: float = 0.5, padding: int = 2,
     scale = (right - left) / width
     cuts = [left + (cut - MARGIN) * scale for cut in find_cuts(probabilities, threshold)]
     edges = [left] + sorted(int(round(c)) for c in cuts if left < c < right) + [right]
+    if details is not None:
+        details["cuts"] = [round(float(c), 1) for c in cuts if left < c < right]
+        details["profile"] = [[round(float(left + (column - MARGIN) * scale), 1), round(float(p), 3)]
+                              for column, p in enumerate(probabilities)]
 
     crops = []
     total_ink = ink[top:bottom, left:right].sum()

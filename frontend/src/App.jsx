@@ -15,6 +15,8 @@ export default function App() {
   const [choice, setChoice] = useState("character:cnn");
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [threshold, setThreshold] = useState(0.5);
+  const [segmenters, setSegmenters] = useState({ defaults: {}, segmenters: [] });
+  const [segmentation, setSegmentation] = useState("");
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
   const pointerRef = useRef(null);
@@ -22,6 +24,8 @@ export default function App() {
   const [family, modelKey] = choice.split(":");
   const modelReady = (family === "character" ? characterModels : models)
     .some((item) => item.key === modelKey && item.available);
+  // Until the user picks one, each route uses its own default segmentation method.
+  const chosenSegmentation = segmentation || segmenters.defaults[family === "numbers" ? "numbers" : "characters"] || "";
   // Only the digit models report a test accuracy to set the threshold from.
   const selectedAccuracy = family === "numbers" ? models.find((item) => item.key === modelKey)?.accuracy : undefined;
 
@@ -44,6 +48,11 @@ export default function App() {
         setModelsLoaded(true);
       })
       .catch(() => { setModelsLoaded(true); setError("Could not check the available models. Is the backend running?"); });
+  }, []);
+  useEffect(() => {
+    // Older backends have no segmentation choice, so a failure just hides the selector.
+    fetch("/api/segmenters").then((response) => (response.ok ? response.json() : null))
+      .then((data) => { if (data) setSegmenters(data); }).catch(() => {});
   }, []);
   useEffect(() => () => previews.forEach(URL.revokeObjectURL), [previews]);
   // Test accuracy is measured across a dataset; it is not a confidence cutoff
@@ -117,6 +126,7 @@ export default function App() {
     } else if (family === "numbers") files.forEach((file) => body.append("files", file));
     else body.append("file", files[0]);
     body.append("model", modelKey);
+    if (chosenSegmentation) body.append("segmentation", chosenSegmentation);
     try {
       const response = await fetch(family === "numbers" ? "/api/predict" : "/api/recognise-text", { method: "POST", body });
       const data = await response.json().catch(() => null);
@@ -186,6 +196,12 @@ export default function App() {
               </optgroup>
             </select>
           </label>
+          {segmenters.segmenters.length > 0 && <label className="model-selector" htmlFor="segmentation-choice"><span>Segmentation method</span>
+            <select id="segmentation-choice" value={chosenSegmentation} disabled={loading}
+              onChange={(event) => { setSegmentation(event.target.value); setResult(null); }}>
+              {segmenters.segmenters.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+            </select>
+          </label>}
           {family === "numbers" && <label className="threshold-control" htmlFor="threshold-choice">
             <span>Flag digits below {(threshold * 100).toFixed(0)}% confidence</span>
             <input id="threshold-choice" type="range" min="0" max="100" step="1"
@@ -195,7 +211,7 @@ export default function App() {
           </label>}
           {!modelReady && modelsLoaded && <p className="hint">Train the selected model first, then restart the backend and refresh this page.</p>}
           {!result ? <div className="empty-result">Your prediction will appear here.</div> : "number" in result ? (
-            <div className="result"><p>Model: {result.model_label}</p><p>Predicted number</p><strong>{result.number}</strong>
+            <div className="result"><p>Model: {result.model_label}{result.segmentation_label ? ` · ${result.segmentation_label}` : ""}</p><p>Predicted number</p><strong>{result.number}</strong>
               <dl><div><dt>Average confidence</dt><dd>{(result.average_confidence * 100).toFixed(1)}%</dd></div><div><dt>Lowest digit</dt><dd>{(result.lowest_confidence * 100).toFixed(1)}%</dd></div></dl>
               <div className="digit-results">{result.predictions.map((item) => (
                 <span key={item.position} className={item.confidence < threshold ? "uncertain" : undefined}>
@@ -212,7 +228,7 @@ export default function App() {
                 </span>
               ))}</div>
             </div>
-          ) : <div className="result"><p>Predicted characters · {result.model_label}</p><strong>{result.text || "(no text detected)"}</strong>
+          ) : <div className="result"><p>Predicted characters · {result.model_label}{result.segmentation_label ? ` · ${result.segmentation_label}` : ""}</p><strong>{result.text || "(no text detected)"}</strong>
             <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>
             <div className="digit-results">{result.predictions?.map((item) => <span key={item.position}>{item.character}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
           </div>}

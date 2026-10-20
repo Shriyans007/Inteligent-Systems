@@ -89,13 +89,14 @@ def get_model(model_key: str = DEFAULT_MODEL):
     return _models[model_key]
 
 
-def predict_probabilities(classifier, model_key: str, batch: np.ndarray) -> np.ndarray:
-    """Return an (n, 10) probability array, whichever library the model comes from."""
+def predict_probabilities(classifier, model_key: str, batch: np.ndarray,
+                          num_classes: int = 10) -> np.ndarray:
+    """Return an (n, num_classes) probability array, whichever library the model comes from."""
     if model_key in SKLEARN_MODELS:
         # The SVM was trained on flat rows of 784 pixels, not 28x28x1 images.
         scores = classifier.predict_proba(batch.reshape(len(batch), -1))
-        # predict_proba orders its columns by classes_, so place each one under its digit.
-        probabilities = np.zeros((len(batch), 10), dtype=np.float32)
+        # predict_proba orders its columns by classes_, so place each one under its class.
+        probabilities = np.zeros((len(batch), num_classes), dtype=np.float32)
         probabilities[:, classifier.classes_.astype(int)] = scores
         return probabilities
     return classifier.predict(batch, verbose=0)
@@ -107,6 +108,26 @@ def predicted_digits(classifier, model_key: str, batch: np.ndarray,
     if model_key in SKLEARN_MODELS:
         return classifier.predict(batch.reshape(len(batch), -1)).astype(int)
     return probabilities.argmax(axis=1)
+
+
+# Segmentation methods the GUI can choose: each one is a set of options for segment().
+SEGMENTERS = {
+    "components_split": ("Connected components + split touching",
+                         {"method": "connected_components", "split_touching": True}),
+    "components": ("Connected components", {"method": "connected_components", "split_touching": False}),
+    "contours_split": ("Contours + split touching", {"method": "contours", "split_touching": True}),
+    "contours": ("Contours", {"method": "contours", "split_touching": False}),
+}
+# Each route keeps the segmentation it used before the choice existed.
+DEFAULT_SEGMENTATION = {"numbers": "components_split", "characters": "components"}
+
+
+def segmentation_options(choice: str | None, route: str) -> tuple[str, dict]:
+    """Return the chosen segmenter's key and its segment() options."""
+    key = choice or DEFAULT_SEGMENTATION[route]
+    if key not in SEGMENTERS:
+        raise HTTPException(status_code=400, detail="Unknown segmentation method.")
+    return key, SEGMENTERS[key][1]
 
 
 @app.on_event("startup")
@@ -134,9 +155,18 @@ def available_models() -> dict:
                        for key, path in MODEL_PATHS.items()]}
 
 
+@app.get("/api/segmenters")
+def segmenters() -> dict:
+    """Let the GUI list the segmentation methods and each route's default."""
+    return {"defaults": DEFAULT_SEGMENTATION,
+            "segmenters": [{"key": key, "label": label} for key, (label, _) in SEGMENTERS.items()]}
+
+
 @app.post("/api/predict")
-async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT_MODEL)) -> dict:
+async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT_MODEL),
+                  segmentation: str | None = Form(None)) -> dict:
     """Recognise one digit or an ordered list of pre-segmented digit images."""
+    segmenter, segment_options = segmentation_options(segmentation, "numbers")
     if not 1 <= len(files) <= 30:
         raise HTTPException(status_code=400, detail="Upload between 1 and 30 digit images.")
 
@@ -153,7 +183,7 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
             image = Image.open(io.BytesIO(content))
             # The segmenter handles a whole number; each crop then gets the
             # same 28x28 input preparation as an uploaded single digit.
-            crops = segment(image, split_touching=True)
+            crops = segment(image, **segment_options)
             if crops:
                 prepared_images.extend(crops_to_model_input(crops))
                 filenames.extend(f"{upload.filename} #{crop.index + 1}" for crop in crops)
@@ -189,6 +219,8 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
     return {
         "model": model,
         "model_label": MODEL_LABELS[model],
+        "segmentation": segmenter,
+        "segmentation_label": SEGMENTERS[segmenter][0],
         "number": "".join(str(item["digit"]) for item in predictions),
         "average_confidence": sum(item["confidence"] for item in predictions) / len(predictions),
         "lowest_confidence": min(item["confidence"] for item in predictions),
@@ -196,8 +228,16 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
     }
 
 
-# The SVM only knows digits, so it is not offered as a letter-and-digit model.
-CHARACTER_PATHS = {key: model_paths(key)[1:] for key in MODEL_PATHS if key not in SKLEARN_MODELS}
+def character_paths(model_key: str):
+    """Model and mapping files for a letters-and-digits model."""
+    _, model_path, mapping_path = model_paths(model_key)
+    if model_key in SKLEARN_MODELS:
+        # svm_model.train_emnist saves the SVM with joblib beside its mapping.
+        model_path = model_path.with_suffix(".joblib")
+    return model_path, mapping_path
+
+
+CHARACTER_PATHS = {key: character_paths(key) for key in MODEL_PATHS}
 _extension_models = {}
 
 
@@ -215,15 +255,21 @@ def get_extension_model(model_key="cnn"):
     if not path.is_file() or not metadata.is_file():
         raise HTTPException(status_code=503, detail=f"Train the character {model_key} model first; expected {path} and {metadata}.")
     if model_key not in _extension_models:
-        _extension_models[model_key] = (_keras().models.load_model(path), json.loads(metadata.read_text()))
+        if model_key in SKLEARN_MODELS:
+            import joblib
+            classifier = joblib.load(path)
+        else:
+            classifier = _keras().models.load_model(path)
+        _extension_models[model_key] = (classifier, json.loads(metadata.read_text()))
     return _extension_models[model_key]
 
 
 @app.post("/api/recognise-text")
 async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
-                         mode: str | None = Form(None)) -> dict:
+                         mode: str | None = Form(None), segmentation: str | None = Form(None)) -> dict:
     if mode is not None and mode != "character":
         raise HTTPException(status_code=400, detail="Only character recognition is available.")
+    segmenter, segment_options = segmentation_options(segmentation, "characters")
     if file.content_type not in {"image/png", "image/jpeg", "image/bmp", "image/webp"}:
         raise HTTPException(status_code=415, detail="Upload a PNG, JPG, BMP or WebP image.")
     content = await file.read()
@@ -235,7 +281,7 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
         with Image.open(io.BytesIO(content)) as image:
             image.verify()
         with Image.open(io.BytesIO(content)) as image:
-            crops = segment(image)
+            crops = segment(image, **segment_options)
             if not crops:
                 raise ValueError("The image does not contain visible writing.")
             if len(crops) > 30:
@@ -243,12 +289,16 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
             # Use the full image for one character, or classify separated
             # crops in left-to-right order for a longer drawing.
             prepared = [prepare_character(image)] if len(crops) == 1 else [prepare_character(Image.fromarray(c.image)) for c in crops]
-        probabilities = classifier.predict(np.stack(prepared), verbose=0)
+        batch = np.stack(prepared)
+        # Same helpers as the digit route, so the SVM gets flat input and its predict() decision.
+        probabilities = predict_probabilities(classifier, model, batch, num_classes=len(mapping))
+        indexes = predicted_digits(classifier, model, batch, probabilities)
         predictions = []
-        for position, scores in enumerate(probabilities):
-            index = int(np.argmax(scores))
+        for position, (scores, index) in enumerate(zip(probabilities, indexes)):
+            index = int(index)
             predictions.append({"position": position, "character": mapping[str(index)], "confidence": float(scores[index])})
         return {"mode": "character", "model": model, "model_label": MODEL_LABELS[model],
+                "segmentation": segmenter, "segmentation_label": SEGMENTERS[segmenter][0],
                 "text": "".join(item["character"] for item in predictions),
                 "confidence": sum(item["confidence"] for item in predictions)/len(predictions),
                 "predictions": predictions}

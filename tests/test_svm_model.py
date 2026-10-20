@@ -47,9 +47,10 @@ def test_svm_prediction_uses_decision_rule_even_if_probabilities_disagree():
     assert api.predicted_digits(stub, "svm", batch, probabilities).tolist() == [3, 3]
 
 
-def test_svm_is_a_digit_model_but_not_a_character_model():
+def test_svm_is_offered_for_digits_and_characters():
     assert "svm" in api.MODEL_PATHS
-    assert "svm" not in api.CHARACTER_PATHS
+    # The character SVM is a joblib file, not a .keras file like the networks.
+    assert api.CHARACTER_PATHS["svm"][0].suffix == ".joblib"
 
 
 def test_svm_can_be_configured_as_startup_model(tmp_path, monkeypatch):

@@ -256,6 +256,62 @@ because of one image):
   it is the rule the reported 96.21% test accuracy was measured with.
 - The SVM is about three times faster per request, because it skips TensorFlow.
 
+## Learned segmentation: the cut-point CNN
+
+The four methods above are rule-based (OpenCV): nothing is learned, and they treat
+every connected blob of ink as one digit, so touching digits are read as one. The
+**Learned cut-point CNN** option replaces those rules with a trained model. It looks
+at the whole number image and predicts, for every pixel column, the probability that
+one digit ends and the next begins; the image is cut wherever that probability is
+above 50%. The crops then go through the same preprocessing and recognition as
+before.
+
+```bash
+python -m segmentation_model.train              # about 12 minutes on a laptop CPU
+python -m segmentation_model.evaluate           # pieces produced on unseen test numbers
+python -m segmentation_model.build_touching_set # 300 numbers whose digits all touch
+python -m cnn_model.benchmark_all --models cnn svm --manifest data/touching/manifest.csv --output artifacts/benchmark/touching
+python -m cnn_model.benchmark_all --models cnn svm --segmentation components_split learned_cuts
+```
+
+- **Training data needs no hand-labelling.** `segmentation_model/data.py` builds
+  number images from MNIST training digits, some with gaps and some touching or
+  overlapping. Because the code places each digit, it knows where every boundary
+  is. Test numbers use MNIST test digits, which the model never sees in training.
+- **Model:** 146,113 parameters. Convolutions shrink the height only, so every
+  column keeps its own output and the model accepts numbers of any width. The loss
+  is binary cross-entropy weighted towards the rarer cut columns.
+- **In the GUI**, every method now shows "How the image was cut into pieces": a box
+  per piece and, for the learned method, its cut lines and its probability curve.
+
+Results from one run (seed 42, 15,000 training images):
+
+| Benchmark | Rule-based (components + split) | Learned cut-point CNN |
+|---|---|---|
+| Normal benchmark, 400 numbers with gaps: CNN | 94.50% (6 wrong piece counts) | **95.50%** (4) |
+| Normal benchmark: SVM | 82.50% | **83.75%** |
+| Touching benchmark, 300 numbers: CNN | 9.67% (263 wrong piece counts) | **64.00%** (37) |
+| Touching benchmark: SVM | 8.33% | **50.00%** |
+
+On 2,000 unseen synthetic test numbers (`segmentation_model.evaluate`), it produced the
+right number of pieces for 91.25% of numbers with mixed gaps and touching digits (4.70%
+too many, 4.05% too few), and for 78.95% when every digit touches (7.45% too many,
+13.60% too few).
+
+- **The first version failed on wide gaps.** Trained only on gaps up to 10 pixels,
+  it scored 26.50% on the normal benchmark: it merged digits whose gaps were wider
+  than anything it had seen. Training on gaps up to 30 pixels, with every empty
+  column between digits labelled as a cut, raised this to 95.50% and also improved
+  the touching benchmark (61.67% to 64.00%). The test data exposed a mismatch with
+  the training data.
+- **Count pieces, not cut columns.** The first training score counted every
+  predicted cut, so cuts through empty margins looked like errors even though they
+  change nothing. `segmentation_model.evaluate` instead counts the pieces that
+  `segment_learned()` actually returns.
+- **Remaining errors:** it can cut a stroke that sticks out of a digit. A hand-drawn
+  2345 with the 4's crossbar touching the 5 came out as 23455: the extra piece was
+  the crossbar, read as a 5 at 50.6% confidence, and the GUI flagged it as uncertain.
+
 ## Research extension: letters and digits
 
 The four existing MNIST classifiers (MLP, shallow CNN, LeNet-5 and small

@@ -291,12 +291,65 @@ Dataset reference: [NIST EMNIST](https://www.nist.gov/itl/products-and-services/
 Create the environment with a supported interpreter explicitly, for example
 `py -3.12 -m venv .venv` on Windows or `python3.12 -m venv .venv` on macOS.
 
-# Reading ambiguous characters
+# Trainable case context for separated handwriting
 
-The character result shows the EMNIST model's raw output and, where relative
-letter height in a separated token supports it, a **possible reading**. For
-example, a small round crop beside shorter lowercase letters and taller strokes
-may suggest `o` when the model chose `0`. This suggestion is a heuristic; it does
-not change the model, its confidence, its test accuracy, or the digit mode.
-Check suggestions against the handwriting. Isolated `o`, `O`, and `0` may remain
-indistinguishable, and this feature has not been evaluated on real uploads.
+The EMNIST ByClass CNN works on individual 28×28 crops. Distinctions such as
+`o`/`O`/`0` and `c`/`C` can disappear when every glyph is rescaled alone.
+The optional **case context** uses the original glyph size and baseline,
+position within a token and CNN probabilities to learn choices among case or
+digit lookalikes. It is trained on *labelled images of handwriting*, not a
+dictionary or a rule for particular words. It never changes the original CNN
+weights or the digit flow, and the GUI defaults to raw CNN output. This
+can still fail when the handwriting or segmentation is ambiguous; it cannot
+recognise connected cursive or arbitrary punctuation.
+
+See [NIST's EMNIST split summary](https://www.nist.gov/itl/products-and-services/emnist-dataset)
+for the 62 unbalanced ByClass labels, and this [handwriting geometry study](https://hub.hku.hk/bitstream/10722/45974/1/1814.pdf)
+for the usefulness and limits of relative letter height.
+
+After recognising a drawing or upload in character mode, enter the exact
+text in **Actual text**, optionally enter a consistent writer ID, then press
+**Save labelled example**. This stores the image in
+`data/case_benchmark/images/` and appends to
+`data/case_benchmark/labels.csv`, which Git ignores. Alternatively make the
+manifest manually with columns:
+
+```csv
+image,text,writer
+images/room1.png,Room,writer_a
+images/upper1.png,ROOM,writer_b
+images/id1.png,R00M,writer_c
+```
+
+Include many *different* words and writers: title case (`Room`), lowercase,
+genuine capitals (`ROOM`) and identifiers containing real digits (`R00M`).
+Use a writer ID for **every** row to enable writer-separated splits (at least
+three writer IDs). With missing IDs, the split is by image only and does not
+measure generalisation to other writers. At least seven independent images
+or writers are required, but many more varied examples will be needed for a
+useful general case model. Training skips a label if its segmented glyph
+count disagrees with the image or a target letter is outside the candidate
+family. Only letters and digits in the 62-class mapping are trainable.
+
+From the project root in your `(hnrs)` PowerShell environment:
+
+```powershell
+python -m text_recognition.case_context check --manifest "data\case_benchmark\labels.csv"
+python -m text_recognition.case_context train --manifest "data\case_benchmark\labels.csv" --model cnn
+Get-Content "artifacts\text\case_context\cnn\metadata.json"
+python -m text_recognition.case_context evaluate --manifest "data\case_benchmark\labels.csv" --model cnn
+Get-Content "artifacts\text\case_context\cnn\test_results.json"
+Import-Csv "artifacts\text\case_context\cnn\test_predictions.csv" | Format-Table -AutoSize
+```
+
+The trained decision and split manifest save separately at
+`artifacts/text/case_context/cnn/case_context.joblib` and `metadata.json`.
+Training assesses validation error but does **not** read the reserved test
+images; `evaluate` compares raw and contextual exact-image accuracy and
+case-sensitive character error rate on those reserved images. If context
+does not beat the raw CNN on validation CER, the API leaves the checkbox
+disabled. If it does, review the held-out results before selecting it.
+Restart the API and refresh the UI to see newly trained availability. To
+experiment with another existing EMNIST classifier, pass its `--model` key;
+each gets a separate context model and result folder. No improvement has
+been measured here without your local labelled examples.

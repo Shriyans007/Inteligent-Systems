@@ -13,6 +13,7 @@ def test_four_character_architectures_have_distinct_artifacts(tmp_path):
     assert len(paths) == 4 and len({model for _, model, _ in paths}) == 4
     assert model_paths("cnn", tmp_path)[1] == tmp_path / "emnist_cnn.keras"
     assert model_paths("resnet", tmp_path, quick=True)[1] == tmp_path / "resnet" / "quick" / "emnist_resnet.keras"
+    assert model_paths("cnn_case_balanced", tmp_path)[1] == tmp_path / "cnn_case_balanced" / "emnist_cnn_case_balanced.keras"
 
 
 def test_emnist_mapping_and_idx(tmp_path):

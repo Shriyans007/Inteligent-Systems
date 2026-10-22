@@ -144,7 +144,7 @@ export default function App() {
         <article className="panel">
           <h2>{source === "draw" ? "Draw here" : "Upload image"}</h2>
           <p className="hint">{family === "character"
-            ? "Draw or upload separate letters and digits from left to right. Spaces and full lines are not supported."
+            ? "Draw or upload separated letters and digits. Leave a wider gap between words; cursive and touching letters may not split correctly."
             : "Draw a number or upload a number image. This model recognises digits only."}</p>
           <div className="mode-options" role="group" aria-label="Input method">
             {[["draw", "Draw here"], ["upload", "Upload image"]].map(([key, label]) => (

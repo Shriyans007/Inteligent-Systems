@@ -35,10 +35,34 @@ def test_extension_availability_and_character_route(tmp_path, monkeypatch):
         image = io.BytesIO(); multiple.save(image, 'PNG')
         response = client.post('/api/recognise-text', files={'file': ('draw.png', image.getvalue(), 'image/png')})
         assert response.status_code == 200
-        assert response.json()['text'] == 'BB'
+        assert response.json()['text'] == 'B B'
+        assert response.json()['predictions'][1]['before'] == ' '
         assert [item['position'] for item in response.json()['predictions']] == [0, 1]
         blank = io.BytesIO(); Image.new('L', (160, 70), 255).save(blank, 'PNG')
         assert client.post('/api/recognise-text', files={'file': ('blank.png', blank.getvalue(), 'image/png')}).status_code == 400
         assert client.post('/api/recognise-text', data={'model': 'mlp'}, files={'file': ('b.png', image.getvalue(), 'image/png')}).status_code == 503
         assert client.post('/api/recognise-text', data={'model': 'unknown'}, files={'file': ('b.png', image.getvalue(), 'image/png')}).status_code == 400
         assert client.post('/api/recognise-text', data={'mode': 'word'}, files={'file': ('b.png', image.getvalue(), 'image/png')}).status_code == 400
+
+
+def test_character_api_preserves_letter_case(tmp_path, monkeypatch):
+    class LowercaseModel:
+        def predict(self, x, verbose=0):
+            scores = np.zeros((len(x), 62), dtype=np.float32)
+            scores[:, 38] = 0.9
+            scores[:, 12] = 0.1
+            return scores
+
+    model_path = tmp_path/'lower.keras'
+    mapping_path = tmp_path/'mapping.json'
+    model_path.touch()
+    mapping_path.write_text(json.dumps({'12': 'C', '38': 'c'}))
+    monkeypatch.setattr(api, 'CHARACTER_PATHS', {'cnn': (model_path, mapping_path)})
+    monkeypatch.setattr(api, '_extension_models', {'cnn': (LowercaseModel(), {'12': 'C', '38': 'c'})})
+    drawing = Image.new('L', (70, 70), 255)
+    ImageDraw.Draw(drawing).ellipse((15, 15, 50, 50), outline=0, width=5)
+    buffer = io.BytesIO(); drawing.save(buffer, 'PNG')
+    with TestClient(api.app) as client:
+        response = client.post('/api/recognise-text', files={'file': ('c.png', buffer.getvalue(), 'image/png')})
+    assert response.status_code == 200
+    assert response.json()['text'] == 'c'

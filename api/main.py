@@ -17,6 +17,7 @@ from preprocessing import prepare_mnist_digit
 from segmentation import crops_to_model_input, segment
 from text_recognition.common import prepare_character
 from text_recognition.emnist import model_paths
+from text_recognition.layout import segment_text
 
 # These paths belong to the original ten-digit classifiers.
 MODEL_PATHS = {
@@ -198,12 +199,14 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
 
 # The SVM only knows digits, so it is not offered as a letter-and-digit model.
 CHARACTER_PATHS = {key: model_paths(key)[1:] for key in MODEL_PATHS if key not in SKLEARN_MODELS}
+CHARACTER_PATHS["cnn_case_balanced"] = model_paths("cnn_case_balanced")[1:]
+CHARACTER_LABELS = {**MODEL_LABELS, "cnn_case_balanced": "Case-balanced CNN (experimental)"}
 _extension_models = {}
 
 
 @app.get("/api/extension-models")
 def extension_models() -> dict:
-    return {"character_models": [{"key": key, "label": MODEL_LABELS[key],
+    return {"character_models": [{"key": key, "label": CHARACTER_LABELS[key],
                                   "available": path.is_file() and meta.is_file()}
                                  for key, (path, meta) in CHARACTER_PATHS.items()]}
 
@@ -235,21 +238,20 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
         with Image.open(io.BytesIO(content)) as image:
             image.verify()
         with Image.open(io.BytesIO(content)) as image:
-            crops = segment(image)
-            if not crops:
+            glyphs = segment_text(image)
+            if not glyphs:
                 raise ValueError("The image does not contain visible writing.")
-            if len(crops) > 30:
+            if len(glyphs) > 30:
                 raise ValueError("Draw no more than 30 separated characters in one image.")
-            # Use the full image for one character, or classify separated
-            # crops in left-to-right order for a longer drawing.
-            prepared = [prepare_character(image)] if len(crops) == 1 else [prepare_character(Image.fromarray(c.image)) for c in crops]
+            prepared = [prepare_character(glyph.image) for glyph in glyphs]
         probabilities = classifier.predict(np.stack(prepared), verbose=0)
         predictions = []
-        for position, scores in enumerate(probabilities):
+        for position, (glyph, scores) in enumerate(zip(glyphs, probabilities)):
             index = int(np.argmax(scores))
-            predictions.append({"position": position, "character": mapping[str(index)], "confidence": float(scores[index])})
-        return {"mode": "character", "model": model, "model_label": MODEL_LABELS[model],
-                "text": "".join(item["character"] for item in predictions),
+            predictions.append({"position": position, "character": mapping[str(index)],
+                                "confidence": float(scores[index]), "before": glyph.before})
+        return {"mode": "character", "model": model, "model_label": CHARACTER_LABELS[model],
+                "text": "".join(item["before"] + item["character"] for item in predictions),
                 "confidence": sum(item["confidence"] for item in predictions)/len(predictions),
                 "predictions": predictions}
     except HTTPException:

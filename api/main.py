@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import io
-import csv
 import json
 import os
 from pathlib import Path
-from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +18,6 @@ from segmentation import crops_to_model_input, segment
 from text_recognition.common import prepare_character
 from text_recognition.emnist import model_paths
 from text_recognition.layout import segment_text
-from text_recognition.case_context import features as case_features, decode as decode_case
 
 # These paths belong to the original ten-digit classifiers.
 MODEL_PATHS = {
@@ -205,67 +202,12 @@ CHARACTER_PATHS = {key: model_paths(key)[1:] for key in MODEL_PATHS if key not i
 CHARACTER_PATHS["cnn_case_balanced"] = model_paths("cnn_case_balanced")[1:]
 CHARACTER_LABELS = {**MODEL_LABELS, "cnn_case_balanced": "Case-balanced CNN (experimental)"}
 _extension_models = {}
-CASE_SAMPLE_ROOT = Path("data/case_benchmark")
-CASE_CONTEXT_ROOT = Path("artifacts/text/case_context")
-_context_models = {}
-
-
-def context_available(model_key):
-    folder = CASE_CONTEXT_ROOT / model_key
-    try:
-        metadata = json.loads((folder / "metadata.json").read_text(encoding="utf-8"))
-        return (metadata.get("enabled") is True and metadata.get("model") == model_key
-                and (folder / "case_context.joblib").is_file())
-    except (OSError, ValueError):
-        return False
-
-
-def get_case_context(model_key):
-    if not context_available(model_key):
-        raise HTTPException(status_code=503, detail=f"Case context for {model_key} is not trained or has not improved validation error. Train and review it first.")
-    if model_key not in _context_models:
-        import joblib
-        _context_models[model_key] = joblib.load(CASE_CONTEXT_ROOT / model_key / "case_context.joblib")
-    return _context_models[model_key]
-
-
-@app.post("/api/case-samples")
-async def save_case_sample(file: UploadFile = File(...), text: str = Form(...),
-                           writer: str = Form("")) -> dict:
-    """Save a user-labelled drawing locally for a later, separate benchmark."""
-    if not text.strip() or len(text) > 80 or sum(not c.isspace() for c in text) > 30:
-        raise HTTPException(status_code=400, detail="Enter the exact text, up to 30 characters excluding spaces.")
-    if len(writer) > 50 or any(c in writer for c in "\r\n,\\/"):
-        raise HTTPException(status_code=400, detail="Writer name must be under 51 characters, without commas or slashes.")
-    extensions = {"image/png": ".png", "image/jpeg": ".jpg", "image/bmp": ".bmp", "image/webp": ".webp"}
-    if file.content_type not in extensions:
-        raise HTTPException(status_code=415, detail="Upload a PNG, JPG, BMP or WebP image.")
-    content = await file.read()
-    if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="The image exceeds the 5 MB limit.")
-    try:
-        with Image.open(io.BytesIO(content)) as image:
-            image.verify()
-    except (OSError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail="The image could not be read.") from exc
-    image_dir = CASE_SAMPLE_ROOT / "images"
-    image_dir.mkdir(parents=True, exist_ok=True)
-    relative = f"images/{uuid4().hex}{extensions[file.content_type]}"
-    (CASE_SAMPLE_ROOT / relative).write_bytes(content)
-    manifest = CASE_SAMPLE_ROOT / "labels.csv"
-    with manifest.open("a", newline="", encoding="utf-8") as stream:
-        labels = csv.writer(stream)
-        if stream.tell() == 0:
-            labels.writerow(["image", "text", "writer"])
-        labels.writerow([relative, text, writer])
-    return {"saved": True, "image": relative, "manifest": str(manifest)}
 
 
 @app.get("/api/extension-models")
 def extension_models() -> dict:
     return {"character_models": [{"key": key, "label": CHARACTER_LABELS[key],
-                                  "available": path.is_file() and meta.is_file(),
-                                  "case_context_available": context_available(key)}
+                                  "available": path.is_file() and meta.is_file()}
                                  for key, (path, meta) in CHARACTER_PATHS.items()]}
 
 
@@ -282,7 +224,7 @@ def get_extension_model(model_key="cnn"):
 
 @app.post("/api/recognise-text")
 async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
-                         mode: str | None = Form(None), context: bool = Form(False)) -> dict:
+                         mode: str | None = Form(None)) -> dict:
     if mode is not None and mode != "character":
         raise HTTPException(status_code=400, detail="Only character recognition is available.")
     if file.content_type not in {"image/png", "image/jpeg", "image/bmp", "image/webp"}:
@@ -308,16 +250,8 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
             index = int(np.argmax(scores))
             predictions.append({"position": position, "character": mapping[str(index)],
                                 "confidence": float(scores[index]), "before": glyph.before})
-        raw_text = "".join(item["before"] + item["character"] for item in predictions)
-        if context:
-            prepared_glyphs = [{"bbox": glyph.bbox, "before": glyph.before} for glyph in glyphs]
-            raw, candidates = case_features(probabilities, prepared_glyphs, mapping)
-            chosen = decode_case(raw, candidates, get_case_context(model))
-            recognised = "".join(item["before"] + char for item, char in zip(predictions, chosen))
-        else:
-            recognised = raw_text
         return {"mode": "character", "model": model, "model_label": CHARACTER_LABELS[model],
-                "text": recognised, "raw_text": raw_text, "case_context": context,
+                "text": "".join(item["before"] + item["character"] for item in predictions),
                 "confidence": sum(item["confidence"] for item in predictions)/len(predictions),
                 "predictions": predictions}
     except HTTPException:

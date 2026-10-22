@@ -32,12 +32,6 @@ figcaption { position: absolute; right: 4px; bottom: 4px; width: 20px; height: 2
 .result { flex: 1; padding-top: 28px; text-align: center; }
 .result > p { margin: 0; color: #718097; }
 .result > strong { display: block; margin: 6px 0 20px; color: #164f8a; font-size: clamp(3rem, 8vw, 5.5rem); line-height: 1; overflow-wrap: anywhere; white-space: pre-wrap; }
-.result .raw-text { margin: 0 0 15px; line-height: 1.5; white-space: pre-wrap; }
-.sample-fields { display: grid; gap: 10px; margin: 22px 0; padding: 16px; border-radius: 10px; background: #f2f6fb; text-align: left; }
-.sample-fields p { margin: 0; color: #53647d; font-size: .85rem; }
-.sample-fields label { display: grid; gap: 4px; color: #53647d; font-size: .82rem; font-weight: 700; }
-.sample-fields input { width: 100%; padding: 9px; border: 1px solid #9db6d2; border-radius: 7px; }
-.sample-fields button { width: 100%; }
 dl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
 dl div { padding: 12px; border-radius: 10px; background: #f2f6fb; }
 dt { color: #6f7d90; font-size: .73rem; }

@@ -15,10 +15,6 @@ export default function App() {
   const [choice, setChoice] = useState("character:cnn");
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [threshold, setThreshold] = useState(0.5);
-  const [sampleLabel, setSampleLabel] = useState("");
-  const [sampleWriter, setSampleWriter] = useState("");
-  const [sampleSaved, setSampleSaved] = useState(false);
-  const [useCaseContext, setUseCaseContext] = useState(false);
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
   const pointerRef = useRef(null);
@@ -26,7 +22,6 @@ export default function App() {
   const [family, modelKey] = choice.split(":");
   const modelReady = (family === "character" ? characterModels : models)
     .some((item) => item.key === modelKey && item.available);
-  const contextReady = characterModels.some((item) => item.key === modelKey && item.case_context_available);
   // Only the digit models report a test accuracy to set the threshold from.
   const selectedAccuracy = family === "numbers" ? models.find((item) => item.key === modelKey)?.accuracy : undefined;
 
@@ -71,11 +66,11 @@ export default function App() {
     const invalid = selected.find((file) => !allowedTypes.includes(file.type) || file.size > 5 * 1024 * 1024);
     if (invalid) return setError(`${invalid.name} must be a PNG, JPG, BMP or WebP image under 5 MB.`);
     setFiles(selected.slice(0, family === "numbers" ? 30 : 1));
-    setResult(null); setError(""); setSampleSaved(false);
+    setResult(null); setError("");
   }
   function changeChoice(event) {
     setChoice(event.target.value);
-    setFiles([]); setResult(null); setError(""); setSampleSaved(false); setUseCaseContext(false);
+    setFiles([]); setResult(null); setError("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
   function point(event) {
@@ -90,7 +85,7 @@ export default function App() {
     const context = canvas.getContext("2d");
     context.beginPath(); context.moveTo(x, y); context.lineTo(x, y); context.stroke();
     pointerRef.current = event.pointerId;
-    setDrawn(true); setResult(null); setError(""); setSampleSaved(false);
+    setDrawn(true); setResult(null); setError("");
   }
   function moveStroke(event) {
     if (pointerRef.current !== event.pointerId) return;
@@ -108,7 +103,7 @@ export default function App() {
       context.fillStyle = "white";
       context.fillRect(0, 0, canvas.width, canvas.height);
     }
-    setDrawn(false); setResult(null); setError(""); setSampleSaved(false);
+    setDrawn(false); setResult(null); setError("");
   }
   async function recognise() {
     if (source === "upload" && !files.length) return setError("Upload an image first.");
@@ -122,31 +117,12 @@ export default function App() {
     } else if (family === "numbers") files.forEach((file) => body.append("files", file));
     else body.append("file", files[0]);
     body.append("model", modelKey);
-    if (family === "character") body.append("context", String(useCaseContext && contextReady));
     try {
       const response = await fetch(family === "numbers" ? "/api/predict" : "/api/recognise-text", { method: "POST", body });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.detail || `Prediction failed (API ${response.status}). Check the backend terminal.`);
       if (!data) throw new Error("The API returned an invalid response. Check the backend terminal.");
       setResult(data);
-    } catch (requestError) { setError(requestError.message); }
-    finally { setLoading(false); }
-  }
-  async function saveSample() {
-    if (!sampleLabel.trim()) return setError("Enter what the image really says before saving it.");
-    setLoading(true); setError("");
-    try {
-      const image = source === "draw"
-        ? await new Promise((resolve) => canvasRef.current.toBlob(resolve, "image/png")) : files[0];
-      if (!image) throw new Error("Could not read the current drawing.");
-      const body = new FormData();
-      body.append("file", image, source === "draw" ? "drawing.png" : files[0].name);
-      body.append("text", sampleLabel);
-      body.append("writer", sampleWriter);
-      const response = await fetch("/api/case-samples", { method: "POST", body });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "Could not save the labelled example.");
-      setSampleSaved(true);
     } catch (requestError) { setError(requestError.message); }
     finally { setLoading(false); }
   }
@@ -217,11 +193,6 @@ export default function App() {
               onChange={(event) => setThreshold(Number(event.target.value) / 100)} />
             {selectedAccuracy != null && <small>MNIST test accuracy: {(selectedAccuracy * 100).toFixed(1)}% (different from confidence on this image)</small>}
           </label>}
-          {family === "character" && <label className="threshold-control">
-            <input type="checkbox" checked={useCaseContext && contextReady} disabled={loading || !contextReady}
-              onChange={(event) => { setUseCaseContext(event.target.checked); setResult(null); }} />
-            Use trained case context {contextReady ? "(optional)" : "(collect labelled samples and train first)"}
-          </label>}
           {!modelReady && modelsLoaded && <p className="hint">Train the selected model first, then restart the backend and refresh this page.</p>}
           {!result ? <div className="empty-result">Your prediction will appear here.</div> : "number" in result ? (
             <div className="result"><p>Model: {result.model_label}</p><p>Predicted number</p><strong>{result.number}</strong>
@@ -241,21 +212,9 @@ export default function App() {
                 </span>
               ))}</div>
             </div>
-          ) : <div className="result"><p>Predicted characters · {result.model_label}{result.case_context ? " + case context" : ""}</p><strong>{result.text || "(no text detected)"}</strong>
-            {result.case_context && result.raw_text !== result.text &&
-              <p className="raw-text">Original CNN: <b>{result.raw_text}</b></p>}
-            <p>Average CNN confidence on original labels: {(result.confidence * 100).toFixed(1)}%</p>
+          ) : <div className="result"><p>Predicted characters · {result.model_label}</p><strong>{result.text || "(no text detected)"}</strong>
+            <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>
             <div className="digit-results">{result.predictions?.map((item) => <span key={item.position}>{item.character}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
-            <div className="sample-fields">
-              <p>Help check case recognition on your own writing. Enter exactly what this image says, then save it locally for the benchmark.</p>
-              <label>Actual text <input type="text" maxLength="80" value={sampleLabel}
-                onChange={(event) => setSampleLabel(event.target.value)} placeholder="e.g. Room" /></label>
-              <label>Writer ID (optional) <input type="text" maxLength="50" value={sampleWriter}
-                onChange={(event) => setSampleWriter(event.target.value)} placeholder="e.g. writer_a" /></label>
-              <button className="secondary-button" onClick={saveSample} disabled={loading || sampleSaved || !sampleLabel.trim()}>
-                {sampleSaved ? "Example saved locally" : "Save labelled example"}
-              </button>
-            </div>
           </div>}
           {error && <p className="error" role="alert">{error}</p>}
           <div className="result-actions">

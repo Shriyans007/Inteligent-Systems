@@ -46,6 +46,24 @@ def test_writer_split_and_missing_data(tmp_path):
     assert len(train) + len(validation) + len(test) == 10
 
 
+def test_three_writers_with_multiple_images_are_enough_to_split():
+    rows = [{'image': f'{i}.png', 'text': 'Room', 'writer': f'writer_{i // 4}'}
+            for i in range(12)]
+    train, validation, test, method = split(rows)
+    assert method == 'writer'
+    assert sorted([len(train), len(validation), len(test)]) == [4, 4, 4]
+    assert len({r['writer'] for r in train + validation + test}) == 3
+
+
+def test_informative_small_split_errors():
+    few = [{'image': f'{i}.png', 'text': 'Room', 'writer': ''} for i in range(3)]
+    with pytest.raises(ValueError, match='Found 3 labelled images; need at least 7'):
+        split(few)
+    two_writers = [{**row, 'writer': str(i % 2)} for i, row in enumerate(few * 3)]
+    with pytest.raises(ValueError, match='Found 2 writer IDs'):
+        split(two_writers)
+
+
 def test_evaluation_counts_case_errors_without_hiding_segmentation():
     mapping = {str(i): c for i, c in enumerate('ROoM')}
     scores = np.zeros((4, 62))

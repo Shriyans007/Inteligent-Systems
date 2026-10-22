@@ -63,18 +63,21 @@ def split(rows):
     rng = np.random.default_rng(42)
     writers = {r["writer"] for r in rows}
     writer_split = "" not in writers and len(writers) >= 3
+    if len(rows) < 7:
+        raise ValueError(f"Found {len(rows)} labelled images; need at least 7 for a train/validation/test split. Save more different examples first.")
+    if "" not in writers and len(writers) == 2:
+        raise ValueError("Found 2 writer IDs; need at least 3 for writer-disjoint train/validation/test. Add a third writer or leave IDs blank for an image-only split.")
     if writer_split:
         ids = sorted(writers)
         rng.shuffle(ids)
         buckets = [[r for r in rows if r["writer"] == writer] for writer in ids]
     else:
         buckets = [[rows[i]] for i in rng.permutation(len(rows))]
-    if len(buckets) < 7:
-        raise ValueError("Need at least seven independent images or writers for train/validation/test; collect more labelled examples.")
-    first = max(1, int(len(buckets) * 0.7))
-    second = max(first + 1, int(len(buckets) * 0.85))
-    if second >= len(buckets):
-        second = len(buckets) - 1
+    # Three writers can provide independent train, validation and test sets
+    # when each contributes multiple images. Requiring seven writers rejected
+    # such valid collections even though the holdout rule was satisfied.
+    first = max(1, min(len(buckets) - 2, int(len(buckets) * 0.7)))
+    second = min(len(buckets) - 1, max(first + 1, int(len(buckets) * 0.85)))
     flatten = lambda groups: [row for bucket in groups for row in bucket]
     return (flatten(buckets[:first]), flatten(buckets[first:second]),
             flatten(buckets[second:]), "writer" if writer_split else "image")
@@ -219,6 +222,8 @@ def main():
     rows = manifest(args.manifest)
     if args.action == "check":
         print(f"Found {len(rows)} labelled images; {len({r['writer'] for r in rows if r['writer']})} writer IDs.")
+        train, validation, test, method = split(rows)
+        print(f"{method}-disjoint train/validation/test: {len(train)}/{len(validation)}/{len(test)} images.")
         return
     _, model_path, mapping_path = model_paths(args.model, args.models)
     if not model_path.is_file() or not mapping_path.is_file():

@@ -324,10 +324,11 @@ images/id1.png,R00M,writer_c
 Include many *different* words and writers: title case (`Room`), lowercase,
 genuine capitals (`ROOM`) and identifiers containing real digits (`R00M`).
 Use a writer ID for **every** row to enable writer-separated splits (at least
-three writer IDs). With missing IDs, the split is by image only and does not
-measure generalisation to other writers. At least seven independent images
-or writers are required, but many more varied examples will be needed for a
-useful general case model. Training skips a label if its segmented glyph
+three distinct writers). With missing IDs or one writer, the split is by image
+only and does not measure generalisation to other writers. Two named writers
+are insufficient for three writer-disjoint sets. At least seven labelled images
+are required in either case, but many more varied examples will be needed for
+a useful general case model. Training skips a label if its segmented glyph
 count disagrees with the image or a target letter is outside the candidate
 family. Only letters and digits in the 62-class mapping are trainable.
 

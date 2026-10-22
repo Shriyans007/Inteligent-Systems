@@ -180,9 +180,11 @@ MNIST models. The default MNIST CNN is unchanged.
 The interface has one drawing area for handwriting. Choose an available
 **Letters and digits** model for separated characters (including numbers), or
 an available **Digits only** model for the original MNIST number prediction
-path. Uploaded images use the same selected path. It joins separate character
-crops from left to right; connected handwriting may be treated as one crop,
-and spaces, whole words and lines are not inferred.
+path. Uploaded images use the same selected path. Character segmentation
+groups short gaps in a stroke, then keeps wider gaps as spaces and separate
+lines as newlines. This is a layout estimate for separated handwriting;
+connected/cursive letters and ambiguous uppercase/lowercase shapes may still
+be wrong. The digit segmentation and default digit CNN are unchanged.
 
 Keep the five EMNIST ByClass files locally under `data/emnist/byclass/` (this directory is gitignored):
 
@@ -238,6 +240,25 @@ The character CNN saves to `artifacts/text/character/emnist_cnn.keras`, with
 `artifacts/text/character/comparison.csv`. The training data is split into
 training and validation sets, while the EMNIST test set is held out until
 evaluation. Only locally measured results belong in these output files.
+
+Some lowercase EMNIST ByClass labels (notably `c`, `o`, `s` and `u`) are
+frequently confused with uppercase letters or digits. For an optional
+comparison, train a **new** CNN with moderate inverse-frequency weighting of
+the training labels; it does not replace the original four results or models:
+
+```powershell
+python -m text_recognition.emnist train --model cnn_case_balanced --quick --epochs 2
+python -m text_recognition.emnist train --model cnn_case_balanced --epochs 12
+python -m text_recognition.emnist evaluate --model cnn_case_balanced
+```
+
+The full model and its test metrics are saved separately in
+`artifacts/text/character/cnn_case_balanced/`. Compare its `results.json` and
+`per_character.csv` with the original CNN, especially lowercase and uppercase
+confusion pairs, before selecting **Case-balanced CNN (experimental)** in the
+GUI. It becomes available only after training locally. Weighting might improve
+rare classes or reduce accuracy elsewhere; no improvement is assumed. Record
+the outcome on labelled uploaded/drawn images as well as held-out EMNIST.
 
 Start FastAPI and React in separate PowerShell terminals:
 

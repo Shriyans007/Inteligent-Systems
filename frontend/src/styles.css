@@ -32,6 +32,7 @@ figcaption { position: absolute; right: 4px; bottom: 4px; width: 20px; height: 2
 .result { flex: 1; padding-top: 28px; text-align: center; }
 .result > p { margin: 0; color: #718097; }
 .result > strong { display: block; margin: 6px 0 20px; color: #164f8a; font-size: clamp(3rem, 8vw, 5.5rem); line-height: 1; overflow-wrap: anywhere; white-space: pre-wrap; }
+.result .text-suggestion { margin: 0 0 15px; line-height: 1.5; white-space: pre-wrap; }
 dl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
 dl div { padding: 12px; border-radius: 10px; background: #f2f6fb; }
 dt { color: #6f7d90; font-size: .73rem; }

@@ -290,3 +290,13 @@ Dataset reference: [NIST EMNIST](https://www.nist.gov/itl/products-and-services/
 
 Create the environment with a supported interpreter explicitly, for example
 `py -3.12 -m venv .venv` on Windows or `python3.12 -m venv .venv` on macOS.
+
+# Reading ambiguous characters
+
+The character result shows the EMNIST model's raw output and, where relative
+letter height in a separated token supports it, a **possible reading**. For
+example, a small round crop beside shorter lowercase letters and taller strokes
+may suggest `o` when the model chose `0`. This suggestion is a heuristic; it does
+not change the model, its confidence, its test accuracy, or the digit mode.
+Check suggestions against the handwriting. Isolated `o`, `O`, and `0` may remain
+indistinguishable, and this feature has not been evaluated on real uploads.

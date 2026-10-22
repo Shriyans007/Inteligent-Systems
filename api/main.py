@@ -18,6 +18,7 @@ from segmentation import crops_to_model_input, segment
 from text_recognition.common import prepare_character
 from text_recognition.emnist import model_paths
 from text_recognition.layout import segment_text
+from text_recognition.suggestions import suggest_text
 
 # These paths belong to the original ten-digit classifiers.
 MODEL_PATHS = {
@@ -250,8 +251,9 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
             index = int(np.argmax(scores))
             predictions.append({"position": position, "character": mapping[str(index)],
                                 "confidence": float(scores[index]), "before": glyph.before})
+        raw_text = "".join(item["before"] + item["character"] for item in predictions)
         return {"mode": "character", "model": model, "model_label": CHARACTER_LABELS[model],
-                "text": "".join(item["before"] + item["character"] for item in predictions),
+                "text": raw_text, "suggested_text": suggest_text(predictions, glyphs),
                 "confidence": sum(item["confidence"] for item in predictions)/len(predictions),
                 "predictions": predictions}
     except HTTPException:

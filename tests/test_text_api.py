@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from fastapi.testclient import TestClient
 import api.main as api
+from text_recognition.layout import Glyph
 
 
 class CharacterModel:
@@ -66,3 +67,31 @@ def test_character_api_preserves_letter_case(tmp_path, monkeypatch):
         response = client.post('/api/recognise-text', files={'file': ('c.png', buffer.getvalue(), 'image/png')})
     assert response.status_code == 200
     assert response.json()['text'] == 'c'
+
+
+def test_character_api_keeps_raw_prediction_when_suggesting_a_reading(tmp_path, monkeypatch):
+    class FixedModel:
+        def predict(self, batch, verbose=0):
+            scores = np.zeros((len(batch), 62), dtype=np.float32)
+            for i, label in enumerate([17, 40, 47, 47, 0]):
+                scores[i, label] = 0.9
+            return scores
+
+    model_path, metadata = tmp_path/'char.keras', tmp_path/'mapping.json'
+    model_path.touch(); metadata.write_text('{}')
+    monkeypatch.setattr(api, 'CHARACTER_PATHS', {'cnn': (model_path, metadata)})
+    monkeypatch.setattr(api, '_extension_models', {'cnn': (FixedModel(),
+        {'17': 'H', '40': 'e', '47': 'l', '0': '0'})})
+    glyphs = []
+    for i, height in enumerate([62, 31, 62, 61, 32]):
+        crop = Image.new('L', (20, height), 255)
+        ImageDraw.Draw(crop).rectangle((5, 3, 14, height-4), fill=0)
+        glyphs.append(Glyph(crop, (i*25, 0, 20, height)))
+    monkeypatch.setattr(api, 'segment_text', lambda image: glyphs)
+    buffer = io.BytesIO(); Image.new('L', (70, 70), 255).save(buffer, 'PNG')
+    with TestClient(api.app) as client:
+        result = client.post('/api/recognise-text', files={'file': ('draw.png', buffer.getvalue(), 'image/png')})
+    assert result.status_code == 200
+    assert result.json()['text'] == 'Hell0'
+    assert result.json()['suggested_text'] == 'Hello'
+    assert result.json()['predictions'][-1]['character'] == '0'

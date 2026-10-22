@@ -213,6 +213,8 @@ export default function App() {
               ))}</div>
             </div>
           ) : <div className="result"><p>Predicted characters · {result.model_label}</p><strong>{result.text || "(no text detected)"}</strong>
+            {result.suggested_text && result.suggested_text !== result.text &&
+              <p className="text-suggestion">Possible reading from letter size: <b>{result.suggested_text}</b><br />Check against your handwriting; this is a suggestion, not a model prediction.</p>}
             <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>
             <div className="digit-results">{result.predictions?.map((item) => <span key={item.position}>{item.character}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
           </div>}

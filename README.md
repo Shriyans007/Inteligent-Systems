@@ -260,6 +260,54 @@ GUI. It becomes available only after training locally. Weighting might improve
 rare classes or reduce accuracy elsewhere; no improvement is assumed. Record
 the outcome on labelled uploaded/drawn images as well as held-out EMNIST.
 
+#### Checking character confusions and trying Hy's suggestions
+
+The original CNN remains the default. Its 62-class confusion matrix is enough
+to find the biggest mistakes without retraining or downloading anything. From
+the project root, with `(hnrs)` active:
+
+```powershell
+python -m text_recognition.confusions
+Import-Csv "artifacts\text\character\diagnosis\case_pairs.csv" | Where-Object { $_.letter -in @('c','o','s','g','q','r') } | Format-Table
+```
+
+`top_confusions.csv` lists actual -> predicted counts and the fraction of that
+actual class; `case_pairs.csv` shows both directions for every letter. They
+save in `artifacts/text/character/diagnosis/`. Look at O/o/0 and I/l/1 as well
+as C/c and S/s. Similar shapes can remain ambiguous in a single 28x28 crop;
+mistakes between visibly different shapes are more useful for spotting a
+preprocessing or model problem. This diagnosis uses only the saved test matrix.
+
+These **new, untrained experiments** use the same EMNIST 62-label mapping and
+train/validation/test split as the original run. The first keeps the shallow
+CNN and adds random rotations up to 7 degrees, shears up to 0.07 and shifts up
+to 1.5 pixels. The second uses that same light augmentation with a four-conv
+CNN, batch normalization and dropout. Only training batches are changed;
+validation, test and GUI images use the existing preprocessing. No flips or
+strong warps are used because those can change a character's identity.
+
+```powershell
+python -m text_recognition.emnist check
+python -m text_recognition.emnist train --model cnn_light_aug --quick --epochs 2
+python -m text_recognition.emnist train --model cnn_deep_aug --quick --epochs 2
+python -m text_recognition.emnist train --model cnn_light_aug --epochs 12
+python -m text_recognition.emnist train --model cnn_deep_aug --epochs 12
+python -m text_recognition.emnist evaluate --model cnn_light_aug
+python -m text_recognition.emnist evaluate --model cnn_deep_aug
+python -m text_recognition.confusions --matrix "artifacts\text\character\cnn_light_aug\confusion_matrix.csv" --output "artifacts\text\character\cnn_light_aug\diagnosis"
+python -m text_recognition.confusions --matrix "artifacts\text\character\cnn_deep_aug\confusion_matrix.csv" --output "artifacts\text\character\cnn_deep_aug\diagnosis"
+```
+
+The quick models go under `artifacts/text/character/<model>/quick/`; full models
+and their `results.json`, `per_character.csv`, `confusion_matrix.csv`, and
+`mapping.json` go under `artifacts/text/character/<model>/`. Those local
+artifacts are excluded from Git. Compare test accuracy and individual
+confusions with the original model, then check a small set of your own
+labelled drawings/uploads. A better dataset score is not guaranteed and does
+not prove every upper/lowercase pair can be resolved without word context.
+The new models appear in the GUI only when saved locally, and selection is
+manual; training them does not change the original CNN or digit model.
+
 Start FastAPI and React in separate PowerShell terminals:
 
 ```powershell

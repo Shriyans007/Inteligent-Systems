@@ -169,6 +169,46 @@ Results from one run (seed 42, 400 numbers of 1-4 digits built from MNIST test d
   model has little tolerance for the small shifts that segmentation and
   re-centring introduce, whereas convolution and pooling absorb them.
 
+## Benchmark metrics and real photos (Person A)
+
+The commands above save one results file per model. To score them all in one go:
+
+```bash
+python -m preprocessing.benchmark_metrics --results artifacts/benchmark_cnn.json artifacts/benchmark_svm.json --plot
+```
+
+This prints a table for each model and number length, and saves
+`artifacts/benchmark/benchmark_comparison.csv`, `benchmark_summary.json` and,
+with `--plot`, `benchmark_accuracy.png` (needs matplotlib). The metrics are:
+
+- **Exact accuracy** - the whole number has to be right.
+- **Digit accuracy** - share of digits right, only counting numbers where
+  segmentation found the right number of digits, so the digits line up.
+- **Character error rate (CER)** - edit distance divided by the number of
+  expected digits, so "308" read as "38" is one error, not a whole wrong number.
+- **Segmentation errors** - the prediction has the wrong number of digits.
+- **Classifier errors** - right number of digits, but at least one is wrong.
+
+It also lists the images that every model got the wrong digit count on. All
+models share the same segmentation step, so those errors come from segmentation.
+
+### Real handwritten photos
+
+MNIST digits are cleaner than real handwriting, so the same benchmark can also
+be run on real photos. Put the photos in one folder (for example `data/photos/`,
+which is gitignored) and name each one with its correct number first, e.g.
+`527.jpg` or `527_02.jpg`. iPhone HEIC photos need to be exported as JPG first.
+
+```bash
+python -m preprocessing.build_photo_manifest data/photos
+python -m cnn_model.evaluate_uploads --manifest data/photos/manifest.csv --model cnn --output artifacts/photos_cnn.json
+python -m cnn_model.evaluate_uploads --manifest data/photos/manifest.csv --model svm --output artifacts/photos_svm.json
+python -m preprocessing.benchmark_metrics --results artifacts/photos_cnn.json artifacts/photos_svm.json --output artifacts/photos --plot
+```
+
+Files that don't start with a number are skipped and listed, so they can be
+renamed and the manifest rebuilt.
+
 ## Research extension: letters and digits
 
 The four existing MNIST classifiers (MLP, shallow CNN, LeNet-5 and small

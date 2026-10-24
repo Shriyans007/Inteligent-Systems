@@ -92,6 +92,29 @@ def shared_segmentation_errors(results: dict) -> list:
     return sorted(set.intersection(*per_model)) if per_model else []
 
 
+def error_rows(results: dict) -> list:
+    """Every wrong prediction, with whether segmentation or the classifier caused it."""
+    rows = []
+    for model, cases in results.items():
+        for case in cases:
+            if case["expected"] == case["predicted"]:
+                continue
+            same_length = len(case["expected"]) == len(case["predicted"])
+            rows.append({"model": model, "image": case["image"], "expected": case["expected"],
+                         "predicted": case["predicted"],
+                         "error_type": "classifier" if same_length else "segmentation"})
+    return rows
+
+
+def save_errors(results: dict, path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["model", "image", "expected", "predicted", "error_type"])
+        writer.writeheader()
+        writer.writerows(error_rows(results))
+    return path
+
+
 def comparison_rows(summaries: dict) -> list:
     rows = []
     for model, summary in summaries.items():
@@ -203,6 +226,9 @@ def main() -> None:
     if len(results) > 1:
         print(f"Wrong digit count for every model: {len(shared)} image(s)")
     print(f"Saved {json_path} and {csv_path}")
+    # handy for looking at the actual images that went wrong
+    errors_path = save_errors(results, args.output / "benchmark_errors.csv")
+    print(f"Saved {errors_path}")
     if args.plot:
         try:
             plot_path = save_accuracy_plot(summaries, args.output / "benchmark_accuracy.png")

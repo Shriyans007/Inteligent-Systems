@@ -116,6 +116,39 @@ def save_outputs(summaries: dict, shared: list, output_dir: Path) -> tuple[Path,
     return json_path, csv_path
 
 
+def save_accuracy_plot(summaries: dict, path: Path) -> Path:
+    """Bar chart of whole-number accuracy by number length, one bar per model."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError as error:
+        raise RuntimeError("--plot needs matplotlib. Run: python3 -m pip install matplotlib") from error
+
+    lengths = sorted({length for summary in summaries.values() for length in summary["by_length"]})
+    width = 0.8 / len(summaries)
+    fig, ax = plt.subplots(figsize=(7, 4))
+    for i, (model, summary) in enumerate(summaries.items()):
+        values = [summary["by_length"].get(length, {}).get("exact_accuracy", 0) * 100 for length in lengths]
+        positions = [x + i * width - 0.4 + width / 2 for x in range(len(lengths))]
+        bars = ax.bar(positions, values, width, label=model)
+        for bar, value in zip(bars, values):
+            ax.text(bar.get_x() + bar.get_width() / 2, value + 0.5, f"{value:.0f}%", ha="center", fontsize=8)
+    ax.set_xticks(range(len(lengths)))
+    ax.set_xticklabels([f"{length}-digit" for length in lengths])
+    ax.set_ylabel("Whole number correct (%)")
+    ax.set_title("Benchmark accuracy by number length")
+    # start a bit below the lowest bar so the differences are easy to see
+    lowest = min(s["by_length"][l]["exact_accuracy"] for s in summaries.values() for l in s["by_length"]) * 100
+    ax.set_ylim(max(0, lowest - 15), 102)
+    ax.legend()
+    plt.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path
+
+
 def _round(value):
     if value is None:
         return "n/a"
@@ -146,6 +179,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Summarise benchmark results from evaluate_uploads.py.")
     parser.add_argument("--results", type=Path, nargs="+", default=[Path("artifacts/benchmark_evaluation.json")])
     parser.add_argument("--output", type=Path, default=Path("artifacts/benchmark"))
+    parser.add_argument("--plot", action="store_true", help="Also save a bar chart of accuracy by number length")
     args = parser.parse_args()
 
     try:
@@ -169,6 +203,12 @@ def main() -> None:
     if len(results) > 1:
         print(f"Wrong digit count for every model: {len(shared)} image(s)")
     print(f"Saved {json_path} and {csv_path}")
+    if args.plot:
+        try:
+            plot_path = save_accuracy_plot(summaries, args.output / "benchmark_accuracy.png")
+        except RuntimeError as error:
+            raise SystemExit(f"Error: {error}")
+        print(f"Saved {plot_path}")
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from preprocessing.benchmark_metrics import (edit_distance, load_results, save_outputs,
+from preprocessing.benchmark_metrics import (edit_distance, load_results, save_accuracy_plot, save_outputs,
                                              shared_segmentation_errors, summarise)
 
 
@@ -98,3 +98,14 @@ def test_load_results_rejects_file_without_cases(tmp_path):
     wrong.write_text(json.dumps([{"model": "CNN selected", "test_accuracy": 0.99}]))
     with pytest.raises(ValueError, match="cases"):
         load_results([wrong])
+
+
+def test_save_accuracy_plot_writes_a_png(tmp_path):
+    pytest.importorskip("matplotlib")
+    summaries = {
+        "cnn": summarise([_case("5", "5"), _case("12", "12"), _case("308", "38")]),
+        "svm": summarise([_case("5", "3"), _case("12", "12"), _case("308", "308")]),
+    }
+    path = save_accuracy_plot(summaries, tmp_path / "plots" / "accuracy.png")
+    # every PNG file starts with the same 8 bytes
+    assert path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"

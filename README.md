@@ -209,6 +209,32 @@ python -m preprocessing.benchmark_metrics --results artifacts/photos_cnn.json ar
 Files that don't start with a number are skipped and listed, so they can be
 renamed and the manifest rebuilt.
 
+### Looking at the mistakes
+
+`benchmark_metrics` also saves `benchmark_errors.csv`, with one row for every
+wrong prediction (model, image, expected, predicted and whether it was a
+segmentation or classifier error). To see the actual images in one picture:
+
+```bash
+python -m preprocessing.error_gallery --results artifacts/benchmark_svm.json
+python -m preprocessing.error_gallery --results artifacts/benchmark_cnn.json --only segmentation
+```
+
+This saves `artifacts/benchmark/<model>_errors.png`. Red borders are
+segmentation errors and orange borders are classifier errors. `--limit` sets
+how many are shown (default 40).
+
+### A messier benchmark set
+
+By default the benchmark digits are evenly spaced and on a straight line.
+`--jitter` moves each digit up or down and makes each gap wider or tighter at
+random (in MNIST pixels), which is closer to real handwriting. It uses the same
+digits and labels as the neat set, so the two can be compared directly:
+
+```bash
+python -m preprocessing.build_benchmark_set --jitter 8 --output data/benchmark_jitter
+```
+
 ## Research extension: letters and digits
 
 The four existing MNIST classifiers (MLP, shallow CNN, LeNet-5 and small

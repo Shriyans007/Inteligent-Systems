@@ -66,3 +66,28 @@ def test_segmenter_finds_one_crop_per_digit(tmp_path):
     for row in rows:
         crops = segment(Image.open(tmp_path / row["image"]), split_touching=True)
         assert len(crops) == len(row["label"])
+
+
+def test_jitter_zero_gives_the_same_image_as_before(tmp_path):
+    images, _ = _fake_mnist(3)
+    neat = np.array(make_number_image(list(images)))
+    also_neat = np.array(make_number_image(list(images), jitter=0, rng=np.random.default_rng(1)))
+    assert np.array_equal(neat, also_neat)
+
+
+def test_jitter_keeps_the_same_digits_and_labels(tmp_path):
+    images, labels = _fake_mnist()
+    neat = _read_manifest(build_benchmark_set(images, labels, tmp_path / "neat", counts={3: 4}))
+    messy = _read_manifest(build_benchmark_set(images, labels, tmp_path / "messy", counts={3: 4}, jitter=6))
+    assert [r["label"] for r in neat] == [r["label"] for r in messy]
+    first = np.array(Image.open(tmp_path / "neat" / neat[0]["image"]))
+    first_messy = np.array(Image.open(tmp_path / "messy" / messy[0]["image"]))
+    assert first.shape != first_messy.shape or not np.array_equal(first, first_messy)
+
+
+def test_segmenter_still_splits_jittered_numbers(tmp_path):
+    images, labels = _fake_mnist()
+    rows = _read_manifest(build_benchmark_set(images, labels, tmp_path, counts={2: 3, 4: 3}, jitter=6))
+    for row in rows:
+        crops = segment(Image.open(tmp_path / row["image"]), split_touching=True)
+        assert len(crops) == len(row["label"])

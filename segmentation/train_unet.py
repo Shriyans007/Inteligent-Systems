@@ -21,6 +21,8 @@ from segmentation.segmenter import _binary_for_detection, segment_connected_comp
 
 from segmentation.unet_resnet import UNET_MODEL, _keras, build_unet_resnet, centre_loss
 from segmentation.unet_segmenter import UNetSegmenter
+from segmentation.synthetic_lines import (EmnistSource, StubSource, augment_line,
+                                          make_batch, random_text, render_line)
 
 
 def load_source(args, split):
@@ -119,13 +121,16 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--stub", action="store_true", help="draw letters with OpenCV instead of using EMNIST")
     args = parser.parse_args()
+    if args.action == "evaluate" and not args.output.is_file():
+        parser.error(f"Train the U-Net first; missing {args.output}")
     if args.action == "train":
         train(load_source(args, "train"), args.steps, args.batch, args.width, args.output,
               seed=args.seed, learning_rate=args.learning_rate, resume=args.resume)
     # Held-out EMNIST test characters are used for the final numbers.
     result = evaluate(UNetSegmenter(args.output), load_source(args, "test"), width=args.width)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    (args.output.parent / "segmentation_results.json").write_text(json.dumps(result, indent=2))
+    results_name = "segmentation_smoke_results.json" if args.stub else "segmentation_results.json"
+    (args.output.parent / results_name).write_text(json.dumps(result, indent=2))
     print(json.dumps(result, indent=2))
 
 

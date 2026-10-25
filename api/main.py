@@ -242,7 +242,9 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
         with Image.open(io.BytesIO(content)) as image:
             image.verify()
         with Image.open(io.BytesIO(content)) as image:
-            glyphs = segment_text(image)
+            # Opt in when testing the trained U-Net; keep the current character
+            # segmentation until its performance on real drawings is checked.
+            glyphs = segment_text(image, method=os.getenv("HNRS_CHARACTER_SEGMENTER", "classical"))
             if not glyphs:
                 raise ValueError("The image does not contain visible writing.")
             if len(glyphs) > 30:

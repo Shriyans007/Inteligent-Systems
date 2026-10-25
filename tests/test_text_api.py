@@ -66,3 +66,24 @@ def test_character_api_preserves_letter_case(tmp_path, monkeypatch):
         response = client.post('/api/recognise-text', files={'file': ('c.png', buffer.getvalue(), 'image/png')})
     assert response.status_code == 200
     assert response.json()['text'] == 'c'
+
+
+def test_character_segmenter_requires_explicit_opt_in(monkeypatch):
+    from text_recognition.layout import Glyph
+
+    methods = []
+    crop = Image.new('L', (28, 28), 255)
+    monkeypatch.setattr(api, 'segment_text', lambda image, method: (
+        methods.append(method) or [Glyph(crop, (0, 0, 28, 28))]))
+    monkeypatch.setattr(api, 'prepare_character', lambda image: np.zeros((28, 28, 1), np.float32))
+    monkeypatch.setattr(api, 'get_extension_model', lambda key: (CharacterModel(), {'11': 'B'}))
+    data = io.BytesIO()
+    crop.save(data, 'PNG')
+    monkeypatch.delenv('HNRS_CHARACTER_SEGMENTER', raising=False)
+    with TestClient(api.app) as client:
+        response = client.post('/api/recognise-text', files={'file': ('c.png', data.getvalue(), 'image/png')})
+        assert response.status_code == 200
+        monkeypatch.setenv('HNRS_CHARACTER_SEGMENTER', 'unet')
+        response = client.post('/api/recognise-text', files={'file': ('c.png', data.getvalue(), 'image/png')})
+        assert response.status_code == 200
+    assert methods == ['classical', 'unet']

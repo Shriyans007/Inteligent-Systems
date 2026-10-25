@@ -374,6 +374,50 @@ not prove every upper/lowercase pair can be resolved without word context.
 The new models appear in the GUI only when saved locally, and selection is
 manual; training them does not change the original CNN or digit model.
 
+#### Optional overlapping-character segmenter (Person B)
+
+This is an **experimental segmentation model**, separate from the EMNIST
+character CNN. It predicts character positions in a handwriting line; the
+selected character CNN still classifies each crop. The U-Net needs training
+before it can be tested. From the project root in `(hnrs)` PowerShell:
+
+```powershell
+python -m segmentation.train_unet train --stub --steps 5 --batch 2 --output "artifacts\text\segmentation\smoke_unet.keras"
+python -m segmentation.train_unet train --data "data\emnist\byclass" --steps 3000
+python -m segmentation.train_unet evaluate --data "data\emnist\byclass"
+Get-Content "artifacts\text\segmentation\segmentation_results.json"
+```
+
+The stub uses computer-drawn characters and is only a check that training can
+start. The full run uses your local EMNIST files and saves
+`artifacts/text/segmentation/unet_resnet.keras`. The evaluation generates
+synthetic lines using held-out EMNIST test characters and reports detection
+precision, recall and exact character count; it does **not** measure accuracy
+on your own drawings. Training on Windows CPU can take a long time. No U-Net
+weights or measured results are included in the repository.
+
+To try it in the GUI, stop the API and start it from the project root with:
+
+```powershell
+$env:HNRS_CHARACTER_SEGMENTER = "unet"
+python -m uvicorn api.main:app --reload
+```
+
+Keep React running, refresh the page, choose the **same trained character CNN**
+and upload or draw the same example. The existing number route is independent.
+To compare against the original character segmentation, stop the API and run:
+
+```powershell
+$env:HNRS_CHARACTER_SEGMENTER = "classical"
+python -m uvicorn api.main:app --reload
+```
+
+`classical` is the API default. Record the actual text and both predictions for
+several labelled examples, especially touching characters. The proposed
+overlap fine-tuning and case-size resolver live in separate research scripts;
+they are not part of the GUI character route. Training this segmenter alone
+does not make the CNN recognise all joined letters or reliably resolve case.
+
 Start FastAPI and React in separate PowerShell terminals:
 
 ```powershell

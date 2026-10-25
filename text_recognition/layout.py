@@ -1,4 +1,15 @@
-"""Segment separated handwriting while retaining spaces and line breaks."""
+"""Segment handwriting into characters while retaining spaces and line breaks.
+
+Two routes, same output (a list of ``Glyph``):
+
+* U-Net route  -- used automatically when trained weights exist at
+  artifacts/text/segmentation/unet_resnet.keras. Finds characters even when
+  they overlap or share strokes (the two t's in "butterfly", an "a" written
+  over an "e").
+* Classical route -- the original connected-components method. Used when the
+  weights are missing, or if you ask for it with ``method="classical"``. It
+  only works when characters are physically separated.
+"""
 
 from dataclasses import dataclass
 
@@ -63,11 +74,78 @@ def _attach_marks(boxes):
     return sorted(kept)
 
 
-def segment_text(image: Image.Image) -> list[Glyph]:
-    """Return glyph crops and separators for clearly separated handwriting.
+_UNET = None
 
-    Short stroke gaps are closed only for detection. Crops contain the original
-    grayscale pixels, so the classifier receives the untouched handwriting.
+
+def _get_unet():
+    """The trained U-Net segmenter, or None if no weights have been trained yet."""
+    global _UNET
+    if _UNET is None:
+        from segmentation.unet_resnet import UNET_MODEL
+        from segmentation.unet_segmenter import UNetSegmenter
+        if not UNetSegmenter.available(UNET_MODEL):
+            return None
+        _UNET = UNetSegmenter(UNET_MODEL)
+    return _UNET
+
+
+def segment_text(image: Image.Image, method: str = "auto") -> list[Glyph]:
+    """Return glyph crops and separators (spaces, line breaks) for handwriting.
+
+    method: "auto" (U-Net if trained weights exist, otherwise classical),
+            "unet" (error if the weights are missing) or "classical".
+    Crops contain the original grayscale pixels, so the classifier receives the
+    untouched handwriting.
+    """
+    if method not in ("auto", "unet", "classical"):
+        raise ValueError(f"Unknown method: {method!r}")
+    if method != "classical":
+        unet = _get_unet()
+        if unet is not None:
+            return _segment_unet(image, unet)
+        if method == "unet":
+            raise FileNotFoundError("No trained U-Net found; run: python -m segmentation.train_unet train")
+    return _segment_classical(image)
+
+
+def _segment_unet(image: Image.Image, unet) -> list[Glyph]:
+    gray = np.asarray(image.convert("L"))
+    binary = _binary_for_detection(gray)
+    if not np.any(binary):
+        return []
+    # Close small gaps only to find the text lines; the U-Net then splits each
+    # line into characters, including ones that touch or overlap.
+    joined = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, np.ones((1, 9), np.uint8))
+    boxes = _boxes(joined)
+    if not boxes:
+        return []
+    result = []
+    for line_index, group in enumerate(_line_groups(boxes)):
+        x0 = max(0, min(b[0] for b in group) - 4)
+        y0 = max(0, min(b[1] for b in group) - 4)
+        x1 = min(gray.shape[1], max(b[0] + b[2] for b in group) + 4)
+        y1 = min(gray.shape[0], max(b[1] + b[3] for b in group) + 4)
+        line = gray[y0:y1, x0:x1]
+        found = unet.find_characters(line)
+        crops = unet.crops(line, found)
+        if len(crops) != len(found):          # defensive: never let boxes and crops drift apart
+            continue
+        median_height = float(np.median([c.h for c in found])) if found else 0.0
+        for i, (box, crop) in enumerate(zip(found, crops)):
+            before = "\n" if line_index and i == 0 else ""
+            if i:
+                previous = found[i - 1]
+                gap = box.x - (previous.x + previous.w)
+                if gap > 0.4 * median_height:    # a word gap is far larger than the gap between letters
+                    before = " "
+            result.append(Glyph(crop, (box.x + x0, box.y + y0, box.w, box.h), before))
+    return result
+
+
+def _segment_classical(image: Image.Image) -> list[Glyph]:
+    """Original method: clearly separated handwriting only.
+
+    Short stroke gaps are closed only for detection.
     """
     gray = np.asarray(image.convert("L"))
     binary = _binary_for_detection(gray)

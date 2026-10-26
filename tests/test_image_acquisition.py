@@ -5,7 +5,7 @@ but these two didn't have their own yet."""
 from PIL import Image
 import pytest
 
-from preprocessing.image_acquisition import build_number_from_digits, load_number_image
+from preprocessing.image_acquisition import build_number_from_digits, load_number_image, main
 
 
 def _make_digit_folder(tmp_path, widths, height=28):
@@ -88,3 +88,15 @@ def test_load_number_image_reads_the_file_straight_away(tmp_path):
     path.unlink()
     # still usable after the file is gone, so nothing was left open
     assert loaded.getpixel((0, 0)) == 255
+
+
+def test_command_line_joins_a_folder_and_saves_where_asked(tmp_path):
+    folder = _make_digit_folder(tmp_path, widths=[20, 30], height=28)
+    output = tmp_path / "out" / "number.png"
+    main(["folder", str(folder), "--output", str(output), "--spacing", "5"])
+    assert Image.open(output).size == (55, 28)
+
+
+def test_command_line_gives_a_short_error_for_a_missing_file(tmp_path):
+    with pytest.raises(SystemExit, match="Error"):
+        main(["file", str(tmp_path / "missing.png"), "--output", str(tmp_path / "out.png")])

@@ -67,3 +67,24 @@ def test_build_number_from_digits_keeps_order_past_nine_digits(tmp_path):
     composite = build_number_from_digits(str(folder), height=28, spacing=0)
     for i in range(12):
         assert composite.getpixel((i * 10 + 5, 14)) == i * 20
+
+
+def test_load_number_image_applies_phone_rotation_tag(tmp_path):
+    # a 60x28 photo saved with orientation 6, which means "rotate 90 degrees
+    # to view", the way a phone saves a picture taken sideways
+    path = tmp_path / "sideways.jpg"
+    image = Image.new("L", (60, 28), color=255)
+    exif = image.getexif()
+    exif[0x0112] = 6
+    image.save(path, exif=exif)
+    loaded = load_number_image(str(path))
+    assert loaded.size == (28, 60)
+
+
+def test_load_number_image_reads_the_file_straight_away(tmp_path):
+    path = tmp_path / "number.png"
+    Image.new("L", (60, 28), color=255).save(path)
+    loaded = load_number_image(str(path))
+    path.unlink()
+    # still usable after the file is gone, so nothing was left open
+    assert loaded.getpixel((0, 0)) == 255

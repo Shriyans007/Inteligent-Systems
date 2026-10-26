@@ -8,7 +8,7 @@ Gets the input "number" image in one of two ways:
 
 import re
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 def load_number_image(path: str) -> Image.Image:
@@ -16,7 +16,13 @@ def load_number_image(path: str) -> Image.Image:
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Cannot find image at {path}")
-    return Image.open(path)
+    with Image.open(path) as image:
+        # phone cameras often save photos sideways with a rotation tag instead
+        # of actually rotating the pixels, so apply that tag here
+        upright = ImageOps.exif_transpose(image)
+        # read the pixels now so the file isn't left open afterwards
+        upright.load()
+    return upright
 
 
 def _natural_sort_key(path: Path):

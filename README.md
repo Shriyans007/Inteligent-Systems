@@ -169,6 +169,59 @@ Results from one run (seed 42, 400 numbers of 1-4 digits built from MNIST test d
   model has little tolerance for the small shifts that segmentation and
   re-centring introduce, whereas convolution and pooling absorb them.
 
+## Preprocessing and image acquisition (Person A)
+
+### Preprocessing
+
+`preprocessing/preprocessing.py` prepares an image for the digit models with
+`preprocess_pipeline()`: grayscale, resize to 28x28 (Lanczos), an optional
+threshold, then scale the pixels to 0-1. The threshold can be a fixed value
+(`method="fixed"`, default 128) or Otsu's method (`method="otsu"`), which picks
+a threshold for each image. The default is grayscale only (`binarize=False`).
+The API, the segmenter and the CNN prediction code all use this through the
+shared `prepare_mnist_digit()` step, which crops and centres each digit first.
+
+`preprocessing/preprocessing_compare.py` compared the three options by training
+the same small MLP (100 hidden units) on each version of 5,000 MNIST images
+from mlxtend, with a stratified 80/20 split. It needs `pip install mlxtend`.
+
+| Method | Test accuracy |
+|---|---|
+| Grayscale only | 92.8% |
+| Fixed threshold (128) | 91.0% |
+| Otsu threshold | 91.2% |
+
+Grayscale only was chosen because it scored highest and keeps the soft grey
+edges of each stroke, which the models were trained on. Both thresholds turn
+those edges into hard black and white steps. They are still available as
+options in case a very noisy photo needs them.
+
+### Image acquisition
+
+`preprocessing/image_acquisition.py` gets a number image in two ways:
+
+```bash
+python -m preprocessing.image_acquisition file path/to/photo.jpg --output number.png
+python -m preprocessing.image_acquisition folder preprocessing/sample_digits --output number.png --height 28 --spacing 4
+```
+
+`load_number_image()` applies the rotation tag that phone cameras save, so a
+photo taken sideways loads the right way up. `build_number_from_digits()` joins
+the digit images in a folder from left to right in file name order, with
+numbers in names compared as numbers, so `digit_10.png` comes after
+`digit_9.png`.
+
+### Figures
+
+```bash
+python -m preprocessing.report_figures
+```
+
+This saves `preprocessing/results/preprocessing_steps.png` (the sample digits
+with each preprocessing option side by side) and
+`preprocessing/results/acquisition_example.png` (separate digit images and the
+number image joined from them).
+
 ## Benchmark metrics and real photos (Person A)
 
 The commands above save one results file per model. To score them all in one go:

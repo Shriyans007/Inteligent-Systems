@@ -455,8 +455,11 @@ under **Character segmentation**. This option is disabled until the full
 `unet_resnet.keras` file exists at the path above. The five-step smoke model
 has a different filename and does not enable the option. The result shows
 which segmenter ran and how many character crops it produced; compare those
-counts and predictions on the same uploaded image. The default remains
-**Classical · separated characters**.
+counts and predictions on the same uploaded image. The GUI defaults to
+**Automatic**: it uses U-Net when full trained weights are available and
+Classical otherwise. You can still select either segmenter explicitly. Older
+API clients that omit a segmenter continue to use Classical unless overridden
+with `HNRS_CHARACTER_SEGMENTER`.
 
 The environment variable remains available for older clients that do not send
 a segmenter choice:

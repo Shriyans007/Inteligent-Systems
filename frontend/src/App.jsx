@@ -14,7 +14,7 @@ export default function App() {
   const [characterModels, setCharacterModels] = useState(fallbackModels);
   const [choice, setChoice] = useState("character:cnn");
   const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [segmenter, setSegmenter] = useState("classical");
+  const [segmenter, setSegmenter] = useState("auto");
   const [unetReady, setUnetReady] = useState(false);
   const [threshold, setThreshold] = useState(0.5);
   const fileInputRef = useRef(null);
@@ -22,6 +22,7 @@ export default function App() {
   const pointerRef = useRef(null);
   const previews = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
   const [family, modelKey] = choice.split(":");
+  const activeSegmenter = segmenter === "auto" ? (unetReady ? "unet" : "classical") : segmenter;
   const modelReady = (family === "character" ? characterModels : models)
     .some((item) => item.key === modelKey && item.available);
   // Only the digit models report a test accuracy to set the threshold from.
@@ -121,7 +122,7 @@ export default function App() {
     else body.append("file", files[0]);
     body.append("model", modelKey);
     if (family === "character") {
-      body.append("segmenter", segmenter);
+      body.append("segmenter", activeSegmenter);
       body.append("show_crops", "true");
     }
     try {
@@ -197,10 +198,11 @@ export default function App() {
             <span>Character segmentation</span>
             <select id="segmenter-choice" value={segmenter} disabled={loading}
               onChange={(event) => { setSegmenter(event.target.value); setResult(null); setError(""); }}>
+              <option value="auto">Automatic · U-Net when trained</option>
               <option value="classical">Classical · separated characters</option>
               <option value="unet" disabled={!unetReady}>U-Net · touching characters{unetReady ? " (experimental)" : " (train full model first)"}</option>
             </select>
-            <small>{unetReady ? "Compare both methods with the same image." : "Only classical segmentation is available on this computer."}</small>
+            <small>{unetReady ? "Automatic currently uses U-Net; choose Classical to compare." : "Automatic currently uses Classical until U-Net weights are installed."}</small>
           </label>}
           {family === "numbers" && <label className="threshold-control" htmlFor="threshold-choice">
             <span>Flag digits below {(threshold * 100).toFixed(0)}% confidence</span>

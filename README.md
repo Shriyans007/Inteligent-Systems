@@ -449,24 +449,36 @@ precision, recall and exact character count; it does **not** measure accuracy
 on your own drawings. Training on Windows CPU can take a long time. No U-Net
 weights or measured results are included in the repository.
 
-To try it in the GUI, stop the API and start it from the project root with:
+To try it in the GUI, start the API from the project root and refresh the GUI.
+Choose a trained character classifier, then select **U-Net · touching characters**
+under **Character segmentation**. This option is disabled until the full
+`unet_resnet.keras` file exists at the path above. The five-step smoke model
+has a different filename and does not enable the option. The result shows
+which segmenter ran and how many character crops it produced; compare those
+counts and predictions on the same uploaded image. The default remains
+**Classical · separated characters**.
+
+The environment variable remains available for older clients that do not send
+a segmenter choice:
 
 ```powershell
 $env:HNRS_CHARACTER_SEGMENTER = "unet"
 python -m uvicorn api.main:app --reload
 ```
 
-Keep React running, refresh the page, choose the **same trained character CNN**
-and upload or draw the same example. The existing number route is independent.
-To compare against the original character segmentation, stop the API and run:
+The GUI choice overrides the environment variable. The existing number route
+is independent. To change the default for older clients, stop the API and run:
 
 ```powershell
 $env:HNRS_CHARACTER_SEGMENTER = "classical"
 python -m uvicorn api.main:app --reload
 ```
 
-`classical` is the API default. Record the actual text and both predictions for
-several labelled examples, especially touching characters. The proposed
+`classical` is the API default. Record the actual text, crop count, and both
+predictions for several labelled examples, especially touching characters.
+If U-Net produces one crop for two joined characters, segmentation is failing;
+if it produces two crops but the letters are wrong, investigate the character
+classifier and the crop images. The proposed
 overlap fine-tuning and case-size resolver live in separate research scripts;
 they are not part of the GUI character route. Training this segmenter alone
 does not make the CNN recognise all joined letters or reliably resolve case.

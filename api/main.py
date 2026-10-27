@@ -18,6 +18,7 @@ from segmentation import crops_to_model_input, segment
 from text_recognition.common import prepare_character
 from text_recognition.emnist import model_paths
 from text_recognition.layout import segment_text
+from segmentation.unet_resnet import UNET_MODEL
 
 # These paths belong to the original ten-digit classifiers.
 MODEL_PATHS = {
@@ -212,7 +213,8 @@ _extension_models = {}
 def extension_models() -> dict:
     return {"character_models": [{"key": key, "label": CHARACTER_LABELS[key],
                                   "available": path.is_file() and meta.is_file()}
-                                 for key, (path, meta) in CHARACTER_PATHS.items()]}
+                                 for key, (path, meta) in CHARACTER_PATHS.items()],
+            "segmenters": {"classical": True, "unet": UNET_MODEL.is_file()}}
 
 
 def get_extension_model(model_key="cnn"):
@@ -228,9 +230,15 @@ def get_extension_model(model_key="cnn"):
 
 @app.post("/api/recognise-text")
 async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
-                         mode: str | None = Form(None)) -> dict:
+                         mode: str | None = Form(None),
+                         segmenter: str | None = Form(None)) -> dict:
     if mode is not None and mode != "character":
         raise HTTPException(status_code=400, detail="Only character recognition is available.")
+    method = segmenter or os.getenv("HNRS_CHARACTER_SEGMENTER", "classical")
+    if method not in {"classical", "unet"}:
+        raise HTTPException(status_code=400, detail="Choose classical or unet character segmentation.")
+    if method == "unet" and not UNET_MODEL.is_file():
+        raise HTTPException(status_code=503, detail=f"Train the full U-Net first; expected {UNET_MODEL}. The smoke model is not used by the GUI.")
     if file.content_type not in {"image/png", "image/jpeg", "image/bmp", "image/webp"}:
         raise HTTPException(status_code=415, detail="Upload a PNG, JPG, BMP or WebP image.")
     content = await file.read()
@@ -244,7 +252,7 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
         with Image.open(io.BytesIO(content)) as image:
             # Opt in when testing the trained U-Net; keep the current character
             # segmentation until its performance on real drawings is checked.
-            glyphs = segment_text(image, method=os.getenv("HNRS_CHARACTER_SEGMENTER", "classical"))
+            glyphs = segment_text(image, method=method)
             if not glyphs:
                 raise ValueError("The image does not contain visible writing.")
             if len(glyphs) > 30:
@@ -255,8 +263,10 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
         for position, (glyph, scores) in enumerate(zip(glyphs, probabilities)):
             index = int(np.argmax(scores))
             predictions.append({"position": position, "character": mapping[str(index)],
-                                "confidence": float(scores[index]), "before": glyph.before})
+                                "confidence": float(scores[index]), "before": glyph.before,
+                                "bbox": glyph.bbox})
         return {"mode": "character", "model": model, "model_label": CHARACTER_LABELS[model],
+                "segmenter": method, "glyph_count": len(glyphs),
                 "text": "".join(item["before"] + item["character"] for item in predictions),
                 "confidence": sum(item["confidence"] for item in predictions)/len(predictions),
                 "predictions": predictions}

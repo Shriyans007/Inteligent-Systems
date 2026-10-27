@@ -14,6 +14,8 @@ export default function App() {
   const [characterModels, setCharacterModels] = useState(fallbackModels);
   const [choice, setChoice] = useState("character:cnn");
   const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [segmenter, setSegmenter] = useState("classical");
+  const [unetReady, setUnetReady] = useState(false);
   const [threshold, setThreshold] = useState(0.5);
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
@@ -34,6 +36,7 @@ export default function App() {
         const characters = text.character_models ?? fallbackModels;
         setModels(digit.models);
         setCharacterModels(characters);
+        setUnetReady(Boolean(text.segmenters?.unet));
         // Use a 62-class model when available, so the drawing can contain letters and digits.
         const firstCharacter = characters.find((item) => item.key === "cnn" && item.available)
           ?? characters.find((item) => item.available);
@@ -117,6 +120,7 @@ export default function App() {
     } else if (family === "numbers") files.forEach((file) => body.append("files", file));
     else body.append("file", files[0]);
     body.append("model", modelKey);
+    if (family === "character") body.append("segmenter", segmenter);
     try {
       const response = await fetch(family === "numbers" ? "/api/predict" : "/api/recognise-text", { method: "POST", body });
       const data = await response.json().catch(() => null);
@@ -144,7 +148,7 @@ export default function App() {
         <article className="panel">
           <h2>{source === "draw" ? "Draw here" : "Upload image"}</h2>
           <p className="hint">{family === "character"
-            ? "Draw or upload separated letters and digits. Leave a wider gap between words; cursive and touching letters may not split correctly."
+            ? "Draw or upload letters and digits. Touching letters need the experimental U-Net; recognition may still be inaccurate."
             : "Draw a number or upload a number image. This model recognises digits only."}</p>
           <div className="mode-options" role="group" aria-label="Input method">
             {[["draw", "Draw here"], ["upload", "Upload image"]].map(([key, label]) => (
@@ -186,6 +190,15 @@ export default function App() {
               </optgroup>
             </select>
           </label>
+          {family === "character" && <label className="model-selector" htmlFor="segmenter-choice">
+            <span>Character segmentation</span>
+            <select id="segmenter-choice" value={segmenter} disabled={loading}
+              onChange={(event) => { setSegmenter(event.target.value); setResult(null); setError(""); }}>
+              <option value="classical">Classical · separated characters</option>
+              <option value="unet" disabled={!unetReady}>U-Net · touching characters{unetReady ? " (experimental)" : " (train full model first)"}</option>
+            </select>
+            <small>{unetReady ? "Compare both methods with the same image." : "Only classical segmentation is available on this computer."}</small>
+          </label>}
           {family === "numbers" && <label className="threshold-control" htmlFor="threshold-choice">
             <span>Flag digits below {(threshold * 100).toFixed(0)}% confidence</span>
             <input id="threshold-choice" type="range" min="0" max="100" step="1"
@@ -213,6 +226,7 @@ export default function App() {
               ))}</div>
             </div>
           ) : <div className="result"><p>Predicted characters · {result.model_label}</p><strong>{result.text || "(no text detected)"}</strong>
+            <p>Segmenter: {result.segmenter === "unet" ? "U-Net (experimental)" : "Classical"} · {result.glyph_count ?? result.predictions?.length} character crops</p>
             <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>
             <div className="digit-results">{result.predictions?.map((item) => <span key={item.position}>{item.character}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
           </div>}

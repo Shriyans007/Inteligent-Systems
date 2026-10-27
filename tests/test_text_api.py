@@ -68,7 +68,7 @@ def test_character_api_preserves_letter_case(tmp_path, monkeypatch):
     assert response.json()['text'] == 'c'
 
 
-def test_character_segmenter_requires_explicit_opt_in(monkeypatch):
+def test_character_segmenter_requires_explicit_opt_in(monkeypatch, tmp_path):
     from text_recognition.layout import Glyph
 
     methods = []
@@ -77,13 +77,32 @@ def test_character_segmenter_requires_explicit_opt_in(monkeypatch):
         methods.append(method) or [Glyph(crop, (0, 0, 28, 28))]))
     monkeypatch.setattr(api, 'prepare_character', lambda image: np.zeros((28, 28, 1), np.float32))
     monkeypatch.setattr(api, 'get_extension_model', lambda key: (CharacterModel(), {'11': 'B'}))
+    weights = tmp_path/'unet_resnet.keras'
+    weights.touch()
+    monkeypatch.setattr(api, 'UNET_MODEL', weights)
     data = io.BytesIO()
     crop.save(data, 'PNG')
     monkeypatch.delenv('HNRS_CHARACTER_SEGMENTER', raising=False)
     with TestClient(api.app) as client:
         response = client.post('/api/recognise-text', files={'file': ('c.png', data.getvalue(), 'image/png')})
         assert response.status_code == 200
+        assert response.json()['segmenter'] == 'classical'
         monkeypatch.setenv('HNRS_CHARACTER_SEGMENTER', 'unet')
         response = client.post('/api/recognise-text', files={'file': ('c.png', data.getvalue(), 'image/png')})
         assert response.status_code == 200
-    assert methods == ['classical', 'unet']
+        assert response.json()['segmenter'] == 'unet'
+        response = client.post('/api/recognise-text', data={'segmenter': 'classical'},
+                               files={'file': ('c.png', data.getvalue(), 'image/png')})
+        assert response.status_code == 200
+        assert response.json()['glyph_count'] == 1
+    assert methods == ['classical', 'unet', 'classical']
+
+
+def test_unet_selection_reports_missing_full_weights(monkeypatch, tmp_path):
+    monkeypatch.setattr(api, 'UNET_MODEL', tmp_path/'unet_resnet.keras')
+    with TestClient(api.app) as client:
+        assert client.get('/api/extension-models').json()['segmenters']['unet'] is False
+        response = client.post('/api/recognise-text', data={'segmenter': 'unet'},
+                               files={'file': ('c.png', b'ignored', 'image/png')})
+    assert response.status_code == 503
+    assert 'smoke model' in response.json()['detail']

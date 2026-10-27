@@ -18,6 +18,7 @@ from preprocessing import prepare_mnist_digit
 from segmentation import crops_to_model_input, segment
 from text_recognition.common import CHAR_MODEL, prepare_character
 from text_recognition.emnist import model_paths
+from text_recognition.refine import refine_split_components
 from text_recognition.layout import segment_text
 from segmentation.unet_resnet import UNET_MODEL
 
@@ -271,7 +272,10 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
             if len(glyphs) > 30:
                 raise ValueError("Draw no more than 30 separated characters in one image.")
             prepared = [prepare_character(glyph.image) for glyph in glyphs]
-        probabilities = classifier.predict(np.stack(prepared), verbose=0)
+            probabilities = classifier.predict(np.stack(prepared), verbose=0)
+            if method == "unet":
+                glyphs, prepared, probabilities = refine_split_components(
+                    image, glyphs, prepared, probabilities, classifier)
         predictions = []
         for position, (glyph, scores) in enumerate(zip(glyphs, probabilities)):
             index = int(np.argmax(scores))

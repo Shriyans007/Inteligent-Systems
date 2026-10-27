@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import base64
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -15,7 +16,7 @@ from PIL import Image
 from cnn_model.models import _keras
 from preprocessing import prepare_mnist_digit
 from segmentation import crops_to_model_input, segment
-from text_recognition.common import prepare_character
+from text_recognition.common import CHAR_MODEL, prepare_character
 from text_recognition.emnist import model_paths
 from text_recognition.layout import segment_text
 from segmentation.unet_resnet import UNET_MODEL
@@ -203,10 +204,19 @@ CHARACTER_PATHS = {key: model_paths(key)[1:] for key in MODEL_PATHS if key not i
 CHARACTER_PATHS["cnn_case_balanced"] = model_paths("cnn_case_balanced")[1:]
 CHARACTER_PATHS["cnn_light_aug"] = model_paths("cnn_light_aug")[1:]
 CHARACTER_PATHS["cnn_deep_aug"] = model_paths("cnn_deep_aug")[1:]
+CHARACTER_PATHS["cnn_overlap"] = (CHAR_MODEL.with_name("emnist_cnn_overlap.keras"), model_paths("cnn")[2])
 CHARACTER_LABELS = {**MODEL_LABELS, "cnn_case_balanced": "Case-balanced CNN (experimental)",
                     "cnn_light_aug": "CNN with light augmentation (experimental)",
-                    "cnn_deep_aug": "Deeper CNN with augmentation (experimental)"}
+                    "cnn_deep_aug": "Deeper CNN with augmentation (experimental)",
+                    "cnn_overlap": "Overlap fine-tuned CNN (experimental)"}
 _extension_models = {}
+
+
+def crop_data_url(image: Image.Image) -> str:
+    """Encode a small glyph preview in the response; no image is stored on disk."""
+    buffer = io.BytesIO()
+    image.convert("L").save(buffer, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
 @app.get("/api/extension-models")
@@ -231,7 +241,8 @@ def get_extension_model(model_key="cnn"):
 @app.post("/api/recognise-text")
 async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
                          mode: str | None = Form(None),
-                         segmenter: str | None = Form(None)) -> dict:
+                         segmenter: str | None = Form(None),
+                         show_crops: bool = Form(False)) -> dict:
     if mode is not None and mode != "character":
         raise HTTPException(status_code=400, detail="Only character recognition is available.")
     method = segmenter or os.getenv("HNRS_CHARACTER_SEGMENTER", "classical")
@@ -262,9 +273,14 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
         predictions = []
         for position, (glyph, scores) in enumerate(zip(glyphs, probabilities)):
             index = int(np.argmax(scores))
-            predictions.append({"position": position, "character": mapping[str(index)],
+            item = {"position": position, "character": mapping[str(index)],
                                 "confidence": float(scores[index]), "before": glyph.before,
-                                "bbox": glyph.bbox})
+                                "bbox": glyph.bbox}
+            if show_crops:
+                item["crop_preview"] = crop_data_url(glyph.image)
+                item["model_input_preview"] = crop_data_url(
+                    Image.fromarray(np.uint8(np.clip(prepared[position][..., 0], 0, 1) * 255)))
+            predictions.append(item)
         return {"mode": "character", "model": model, "model_label": CHARACTER_LABELS[model],
                 "segmenter": method, "glyph_count": len(glyphs),
                 "text": "".join(item["before"] + item["character"] for item in predictions),

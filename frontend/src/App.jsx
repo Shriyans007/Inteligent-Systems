@@ -120,7 +120,10 @@ export default function App() {
     } else if (family === "numbers") files.forEach((file) => body.append("files", file));
     else body.append("file", files[0]);
     body.append("model", modelKey);
-    if (family === "character") body.append("segmenter", segmenter);
+    if (family === "character") {
+      body.append("segmenter", segmenter);
+      body.append("show_crops", "true");
+    }
     try {
       const response = await fetch(family === "numbers" ? "/api/predict" : "/api/recognise-text", { method: "POST", body });
       const data = await response.json().catch(() => null);
@@ -229,6 +232,15 @@ export default function App() {
             <p>Segmenter: {result.segmenter === "unet" ? "U-Net (experimental)" : "Classical"} · {result.glyph_count ?? result.predictions?.length} character crops</p>
             <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>
             <div className="digit-results">{result.predictions?.map((item) => <span key={item.position}>{item.character}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
+            {result.predictions?.some((item) => item.crop_preview) && <section className="crop-inspection" aria-label="Character crop inspection">
+              <h3>What each character model saw</h3>
+              <p>Raw crop from segmentation (left), then the 28 × 28 image given to the classifier (right). Check whether each pair contains one complete letter.</p>
+              <div className="crop-grid">{result.predictions.map((item) => <figure key={item.position}>
+                <figcaption>Crop {item.position + 1} → {item.character}</figcaption>
+                <div><img src={item.crop_preview} alt={`Raw crop ${item.position + 1}`} />
+                  <img src={item.model_input_preview} alt={`Model input ${item.position + 1}`} /></div>
+              </figure>)}</div>
+            </section>}
           </div>}
           {error && <p className="error" role="alert">{error}</p>}
           <div className="result-actions">

@@ -478,10 +478,32 @@ python -m uvicorn api.main:app --reload
 predictions for several labelled examples, especially touching characters.
 If U-Net produces one crop for two joined characters, segmentation is failing;
 if it produces two crops but the letters are wrong, investigate the character
-classifier and the crop images. The proposed
-overlap fine-tuning and case-size resolver live in separate research scripts;
-they are not part of the GUI character route. Training this segmenter alone
-does not make the CNN recognise all joined letters or reliably resolve case.
+classifier and the crop images. The GUI now shows each raw U-Net crop alongside
+the 28 × 28 image sent to the classifier. A correct crop count alone does not
+mean the crops contain complete individual letters.
+
+The original EMNIST classifiers were trained on isolated characters. To test
+whether training on crops with neighbouring ink helps, use the separate
+overlap fine-tuning experiment. First run a small check that saves outside the
+GUI's model path:
+
+```powershell
+python -m text_recognition.finetune_overlap --data "data\emnist\byclass" --lines 200 --clean 2000 --epochs 1 --output "artifacts\text\character\overlap_check.keras"
+```
+
+If that succeeds, train and evaluate the full experiment:
+
+```powershell
+python -m text_recognition.finetune_overlap --data "data\emnist\byclass"
+Get-Content "artifacts\text\character\overlap_finetune_results.json"
+```
+
+Restart the API and refresh the GUI. **Overlap fine-tuned CNN (experimental)**
+appears when its saved model exists. Compare its clean and synthetic overlap
+accuracy against the original before selecting it for a demonstration, and
+compare actual labelled drawings with the same U-Net segmenter. Its synthetic
+scores do not establish an improvement on real handwriting. The case-size
+resolver remains a separate research script and is not part of this GUI route.
 
 Start FastAPI and React in separate PowerShell terminals:
 

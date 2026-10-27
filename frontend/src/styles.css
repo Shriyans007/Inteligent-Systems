@@ -134,3 +134,12 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   color: #8a5a00;
   font-weight: 700;
 }
+
+.crop-inspection { margin-top: 20px; text-align: left; border-top: 1px solid #d4deeb; padding-top: 14px; }
+.crop-inspection h3 { margin: 0 0 6px; font-size: 1rem; }
+.crop-inspection p { margin: 0 0 12px; font-size: .78rem; line-height: 1.45; color: #53647d; }
+.crop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.crop-grid figure { margin: 0; padding: 7px; border: 1px solid #d4deeb; border-radius: 9px; }
+.crop-grid figcaption { margin-bottom: 6px; font-size: .74rem; font-weight: 700; }
+.crop-grid figure div { display: flex; align-items: center; justify-content: space-around; gap: 4px; }
+.crop-grid img { width: 44px; height: 44px; object-fit: contain; image-rendering: pixelated; background: #edf2f8; border-radius: 4px; }

@@ -1,5 +1,6 @@
 import io
 import json
+import base64
 import numpy as np
 from PIL import Image, ImageDraw
 from fastapi.testclient import TestClient
@@ -106,3 +107,24 @@ def test_unet_selection_reports_missing_full_weights(monkeypatch, tmp_path):
                                files={'file': ('c.png', b'ignored', 'image/png')})
     assert response.status_code == 503
     assert 'smoke model' in response.json()['detail']
+
+
+def test_crop_inspection_returns_raw_and_classifier_input(monkeypatch):
+    from text_recognition.layout import Glyph
+
+    raw = Image.new('L', (40, 50), 255)
+    ImageDraw.Draw(raw).line((9, 5, 24, 42), fill=0, width=4)
+    monkeypatch.setattr(api, 'segment_text', lambda image, method: [Glyph(raw, (9, 5, 16, 38))])
+    monkeypatch.setattr(api, 'get_extension_model', lambda key: (CharacterModel(), {'11': 'B'}))
+    data = io.BytesIO(); raw.save(data, 'PNG')
+    with TestClient(api.app) as client:
+        response = client.post('/api/recognise-text', data={'show_crops': 'true'},
+                               files={'file': ('draw.png', data.getvalue(), 'image/png')})
+    assert response.status_code == 200
+    prediction = response.json()['predictions'][0]
+    assert prediction['bbox'] == [9, 5, 16, 38]
+    for field, expected_size in [('crop_preview', (40, 50)), ('model_input_preview', (28, 28))]:
+        prefix, payload = prediction[field].split(',', 1)
+        assert prefix == 'data:image/png;base64'
+        with Image.open(io.BytesIO(base64.b64decode(payload))) as preview:
+            assert preview.size == expected_size

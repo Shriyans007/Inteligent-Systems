@@ -16,7 +16,8 @@ sys.path.insert(0, str(ROOT))
 from segmentation.synthetic_lines import (StubSource, make_batch, make_targets, render_line,
                                           vertical_metrics)
 from segmentation.unet_resnet import UNET_MODEL, build_unet_resnet, centre_loss
-from segmentation.unet_segmenter import UNetSegmenter, decode_peaks, pad_to_multiple, window_crop
+from segmentation.unet_segmenter import (CharBox, UNetSegmenter, decode_peaks, pad_to_multiple,
+                                         remove_disconnected_neighbours, window_crop)
 
 
 def test_model_is_small_enough_for_a_cpu_and_accepts_any_line_size():
@@ -78,6 +79,27 @@ def test_window_crop_works_for_both_ink_polarities():
     dark = window_crop(line, 100, 12)
     light = window_crop(255 - line, 100, 12)
     assert dark.shape == light.shape and dark.shape[0] <= 44
+
+
+def test_disconnected_neighbour_is_removed_but_shared_stroke_remains():
+    import cv2
+
+    white = np.full((64, 140), 255, np.uint8)
+    cv2.line(white, (18, 10), (30, 50), 0, 4)
+    cv2.circle(white, (56, 36), 11, 0, 4)
+    boxes = [CharBox(15, 10, 18, 41, 24, 25, 0.9),
+             CharBox(45, 25, 23, 23, 56, 25, 0.9)]
+    for line in (white, 255 - white):
+        cleaned = remove_disconnected_neighbours(line, boxes, 1)
+        assert np.all(cleaned[10:51, 16:33] == line[0, 0])
+        assert np.array_equal(cleaned[25:48, 45:68], line[25:48, 45:68])
+
+    joined = np.full((64, 140), 255, np.uint8)
+    cv2.line(joined, (24, 35), (90, 35), 0, 4)
+    shared = [CharBox(23, 33, 35, 5, 32, 25, 0.9),
+              CharBox(56, 33, 36, 5, 80, 25, 0.9)]
+    assert np.array_equal(remove_disconnected_neighbours(joined, shared, 0), joined)
+    assert np.array_equal(remove_disconnected_neighbours(joined, shared, 1), joined)
 
 
 def test_a_few_training_steps_reduce_the_loss():

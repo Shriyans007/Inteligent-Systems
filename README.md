@@ -482,6 +482,37 @@ classifier and the crop images. The GUI now shows each raw U-Net crop alongside
 the 28 × 28 image sent to the classifier. A correct crop count alone does not
 mean the crops contain complete individual letters.
 
+U-Net crops now have an 8% side margin and hide disconnected ink assigned to
+another character centre. Ink joining two centres stays in both crops. This
+change was selected by comparing crop variants on EMNIST training characters
+composed into random five-character lines. To reproduce the comparison on your
+own trained CNN/U-Net and then on held-out EMNIST test characters, run:
+
+```powershell
+python -m text_recognition.evaluate_crop_windows train --repeats 5
+python -m text_recognition.evaluate_crop_windows test --repeats 5
+```
+
+Results, including all 62 character classes and separate/overlap scores, are
+saved under `artifacts/text/segmentation/crop_windows_<split>.json`. With the
+fine-tuned U-Net and uploaded EMNIST CNN, the original crop scored 42.9% and
+the selected crop 55.7% on 2,979 matched glyphs from 620 held-out synthetic
+five-character lines. Fifty-three classes improved, seven tied and two
+declined with this fine-tuned U-Net. These scores evaluate the
+classifier on correctly matched U-Net detections; they do not include missed
+characters or establish accuracy on natural drawings.
+
+A separate 250-step EMNIST fine-tuning run of the supplied U-Net (seed 853,
+batch 8, learning rate 0.0001) improved exact line detection from 56.0% to
+58.2% on 600 held-out synthetic lines with a different seed. Recall rose from
+93.6% to 94.1%, with precision approximately 99.5%. On the reproducible 620
+five-character lines above, exact lines rose from 484 to 488 and matched
+characters from 2,966 to 2,979 out of 3,100. The `unet_resnet.keras` used by
+the API must be replaced with the fine-tuned weights and the API restarted;
+changing the Python code alone does not update those weights. The old weights
+can be retained separately as a backup. Some overlapping letters are still
+missed and real drawn words need a labelled evaluation of their own.
+
 The original EMNIST classifiers were trained on isolated characters. To test
 whether training on crops with neighbouring ink helps, use the separate
 overlap fine-tuning experiment. First run a small check that saves outside the

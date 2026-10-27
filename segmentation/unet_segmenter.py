@@ -3,10 +3,9 @@
     line image -> normalise scale -> U-Net -> centre peaks -> one box per character
 
 Overlapping characters get separate boxes because each has its own peak. The
-boxes may overlap each other, and crops deliberately include a little of the
-shared ink: the classifier is fine-tuned on crops made exactly this way
-(text_recognition/finetune_overlap.py), so it learns to read a "t" whose
-crossbar is shared with the next "t".
+boxes may overlap each other, and crops include a little of the shared ink.
+The optional overlap fine-tuning uses the same crop width
+(text_recognition/finetune_overlap.py).
 """
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +18,7 @@ from segmentation.segmenter import _binary_for_detection
 from segmentation.unet_resnet import DIVISOR, LINE_HEIGHT, STRIDE, UNET_MODEL, load_unet
 
 TARGET_MEDIAN_HEIGHT = 26      # typical glyph height the network was trained on (pixels)
-CROP_MARGIN = 0.18             # extra width on each side of a crop, as a fraction of its width
+CROP_MARGIN = 0.08             # extra width on each side; validated on held-out EMNIST line crops
 
 
 @dataclass
@@ -105,6 +104,32 @@ def window_crop(gray, cx, half_width, margin=CROP_MARGIN):
     return window[y0:y1]
 
 
+def remove_disconnected_neighbours(gray, boxes, index):
+    """Hide ink owned solely by another U-Net character centre.
+
+    Ink spanning multiple centres is retained in both crops because connected
+    components cannot reliably separate letters sharing a stroke.
+    """
+    binary = _binary_for_detection(gray)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(binary, 8)
+    if count <= 2 or len(boxes) <= 1:
+        return gray
+    centres = np.asarray([b.cx for b in boxes])
+    excluded = np.zeros(count, dtype=bool)
+    for component in range(1, count):
+        x, _, width, _, _ = stats[component]
+        owners = np.flatnonzero((centres >= x) & (centres < x + width))
+        if not len(owners):
+            owners = np.array([np.argmin(abs(centres - (x + width / 2)))])
+        excluded[component] = index not in owners
+    if not excluded.any():
+        return gray
+    border = np.concatenate((gray[0], gray[-1], gray[:, 0], gray[:, -1]))
+    cleaned = gray.copy()
+    cleaned[excluded[labels]] = np.uint8(np.median(border))
+    return cleaned
+
+
 class UNetSegmenter:
     def __init__(self, model_path=UNET_MODEL, threshold=0.3, model=None):
         self.model = model if model is not None else load_unet(model_path)
@@ -153,8 +178,8 @@ class UNetSegmenter:
         gray = np.asarray(gray)
         boxes = self.find_characters(gray) if boxes is None else boxes
         result = []
-        for b in boxes:
-            crop = window_crop(gray, b.cx, b.half_width, margin)
+        for i, b in enumerate(boxes):
+            crop = window_crop(remove_disconnected_neighbours(gray, boxes, i), b.cx, b.half_width, margin)
             if crop is not None:
                 result.append(Image.fromarray(crop))
         return result

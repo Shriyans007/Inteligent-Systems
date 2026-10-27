@@ -536,6 +536,19 @@ compare actual labelled drawings with the same U-Net segmenter. Its synthetic
 scores do not establish an improvement on real handwriting. The case-size
 resolver remains a separate research script and is not part of this GUI route.
 
+The CNN option requires `artifacts/text/character/emnist_cnn_overlap.keras`
+and the original `mapping.json`. Fine-tuned U-Net weights belong in
+`artifacts/text/segmentation/unet_resnet.keras`; that file alone does not train
+or enable the CNN option. A separate balanced-EMNIST experiment blended the
+original CNN (75%) with an overlap-trained CNN (25%) to limit uppercase and
+digit regressions. On 2,979 matched glyphs in held-out synthetic lines it
+scored 58.2%, versus 55.7% for the original CNN with the same U-Net and crops.
+Across 62 classes, 32 improved, 21 tied and nine fell by at most 3.6 percentage
+points. The simple full overlap fine-tune command above can improve overall
+accuracy while substantially hurting some uppercase classes; it is a separate
+experiment from the blended model. Neither result guarantees accuracy on
+arbitrary real drawings.
+
 Start FastAPI and React in separate PowerShell terminals:
 
 ```powershell

@@ -204,10 +204,12 @@ CHARACTER_PATHS = {key: model_paths(key)[1:] for key in MODEL_PATHS if key not i
 CHARACTER_PATHS["cnn_case_balanced"] = model_paths("cnn_case_balanced")[1:]
 CHARACTER_PATHS["cnn_light_aug"] = model_paths("cnn_light_aug")[1:]
 CHARACTER_PATHS["cnn_deep_aug"] = model_paths("cnn_deep_aug")[1:]
+CHARACTER_PATHS["mlp_large"] = model_paths("mlp_large")[1:]
 CHARACTER_PATHS["cnn_overlap"] = (CHAR_MODEL.with_name("emnist_cnn_overlap.keras"), model_paths("cnn")[2])
 CHARACTER_LABELS = {**MODEL_LABELS, "cnn_case_balanced": "Case-balanced CNN (experimental)",
                     "cnn_light_aug": "CNN with light augmentation (experimental)",
                     "cnn_deep_aug": "Deeper CNN with augmentation (experimental)",
+                    "mlp_large": "Larger MLP (256 + 128)",
                     "cnn_overlap": "Overlap fine-tuned CNN (experimental)"}
 _extension_models = {}
 

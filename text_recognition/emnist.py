@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import struct
 import numpy as np
-from cnn_model.models import build_cnn, build_mlp, build_lenet5, build_resnet, compile_model, _keras
+from cnn_model.models import build_cnn, build_mlp, build_mlp_large, build_lenet5, build_resnet, compile_model, _keras
 from .common import CHAR_MODEL, CHAR_MAPPING
 from .augmentation import augment_batch
 from .emnist_model import build_deep_cnn
@@ -17,7 +17,7 @@ FILES = {"train_images": "emnist-byclass-train-images-idx3-ubyte.gz",
          "test_labels": "emnist-byclass-test-labels-idx1-ubyte.gz",
          "mapping": "emnist-byclass-mapping.txt"}
 BUILDERS = {"cnn": build_cnn, "mlp": build_mlp, "lenet5": build_lenet5, "resnet": build_resnet}
-EXPERIMENTAL_BUILDERS = {**BUILDERS, "cnn_case_balanced": build_cnn,
+EXPERIMENTAL_BUILDERS = {**BUILDERS, "mlp_large": build_mlp_large, "cnn_case_balanced": build_cnn,
                          "cnn_light_aug": build_cnn, "cnn_deep_aug": build_deep_cnn}
 AUGMENTED = {"cnn_light_aug", "cnn_deep_aug"}
 
@@ -152,6 +152,8 @@ def main():
     cut = int(len(order)*0.9)
     train, validation = order[:cut], order[cut:]
     # Reuse the MNIST layouts, but build fresh weights with 62 outputs.
+    if args.model in {"mlp", "mlp_large"}:
+        _keras().utils.set_random_seed(42)
     model = compile_model(EXPERIMENTAL_BUILDERS[args.model](62))
     output.mkdir(parents=True, exist_ok=True)
     mapping_path.write_text(json.dumps(mapping, indent=2))
@@ -180,7 +182,7 @@ def main():
             return (*batch, weights[y[selected]]) if weights is not None else batch
         def on_epoch_end(self):
             self.epoch += 1
-    model.fit(Batches(train, augment=args.model in AUGMENTED), validation_data=Batches(validation),
+    model.fit(Batches(train, augment=args.model in AUGMENTED), validation_data=Batches(validation), verbose=2,
               epochs=args.epochs if not args.quick else min(args.epochs, 2),
               callbacks=[_keras().callbacks.EarlyStopping(patience=3, restore_best_weights=True)])
     model.save(model_path)

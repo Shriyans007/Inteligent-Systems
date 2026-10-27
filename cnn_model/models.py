@@ -30,6 +30,23 @@ def build_mlp(num_classes: int = 10):
     )
 
 
+def build_mlp_large(num_classes: int = 10):
+    """Two-layer MLP for a separate capacity comparison on EMNIST."""
+    keras = _keras()
+    return keras.Sequential(
+        [
+            keras.layers.Input((28, 28, 1)),
+            keras.layers.Flatten(),
+            keras.layers.Dense(256, activation="relu"),
+            keras.layers.Dropout(0.25),
+            keras.layers.Dense(128, activation="relu"),
+            keras.layers.Dropout(0.25),
+            keras.layers.Dense(num_classes, activation="softmax"),
+        ],
+        name="mlp_large",
+    )
+
+
 def build_cnn(num_classes: int = 10):
     """Return the selected CNN architecture for handwritten digit recognition."""
     keras = _keras()

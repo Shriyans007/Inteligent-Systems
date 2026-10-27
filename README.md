@@ -352,6 +352,26 @@ python -m text_recognition.emnist evaluate --model resnet
 python -m text_recognition.emnist compare
 ```
 
+To test whether more MLP capacity helps EMNIST, keep the original 128-unit MLP
+and train a separate 256→128-unit MLP with the same split, optimizer, epoch
+limit and early-stopping rule:
+
+```powershell
+python -m text_recognition.emnist train --model mlp_large --quick --epochs 2
+python -m text_recognition.emnist train --model mlp_large --epochs 12
+python -m text_recognition.emnist evaluate --model mlp_large
+```
+
+The full model, its 62-class mapping, confusion matrix, per-character results
+and test score save under `artifacts/text/character/mlp_large/`. After training,
+**Larger MLP (256 + 128)** becomes selectable in the GUI. The original four
+model comparison and MNIST digit models are unchanged. In a matched run using
+EMNIST ByClass, the original MLP (108,478 parameters) scored 83.285% and the
+larger MLP (241,854 parameters) scored 84.247% on the same 116,323 held-out
+characters. Some individual classes declined, so report per-character results
+as well as overall accuracy. A larger classifier cannot recover letters that
+the segmenter combines into a single crop.
+
 The character CNN saves to `artifacts/text/character/emnist_cnn.keras`, with
 `mapping.json`, `results.json`, `per_character.csv` and
 `confusion_matrix.csv` beside it. The other models save under

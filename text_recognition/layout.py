@@ -97,18 +97,18 @@ def segment_text(image: Image.Image, method: str = "auto") -> list[Glyph]:
     Crops contain the original grayscale pixels, so the classifier receives the
     untouched handwriting.
     """
-    if method not in ("auto", "unet", "classical"):
+    if method not in ("auto", "unet", "unet_tight", "classical"):
         raise ValueError(f"Unknown method: {method!r}")
     if method != "classical":
         unet = _get_unet()
         if unet is not None:
-            return _segment_unet(image, unet)
-        if method == "unet":
+            return _segment_unet(image, unet, tight=method == "unet_tight")
+        if method in ("unet", "unet_tight"):
             raise FileNotFoundError("No trained U-Net found; run: python -m segmentation.train_unet train")
     return _segment_classical(image)
 
 
-def _segment_unet(image: Image.Image, unet) -> list[Glyph]:
+def _segment_unet(image: Image.Image, unet, tight=False) -> list[Glyph]:
     gray = np.asarray(image.convert("L"))
     binary = _binary_for_detection(gray)
     if not np.any(binary):
@@ -127,18 +127,19 @@ def _segment_unet(image: Image.Image, unet) -> list[Glyph]:
         y1 = min(gray.shape[0], max(b[1] + b[3] for b in group) + 4)
         line = gray[y0:y1, x0:x1]
         found = unet.find_characters(line)
-        crops = unet.crops(line, found)
+        crops = unet.crops(line, found, tight=tight, with_boxes=True)
         if len(crops) != len(found):          # defensive: never let boxes and crops drift apart
             continue
         median_height = float(np.median([c.h for c in found])) if found else 0.0
-        for i, (box, crop) in enumerate(zip(found, crops)):
+        for i, (box, (crop, crop_box)) in enumerate(zip(found, crops)):
             before = "\n" if line_index and i == 0 else ""
             if i:
                 previous = found[i - 1]
                 gap = box.x - (previous.x + previous.w)
                 if gap > 0.4 * median_height:    # a word gap is far larger than the gap between letters
                     before = " "
-            result.append(Glyph(crop, (box.x + x0, box.y + y0, box.w, box.h), before))
+            bx, by, bw, bh = crop_box
+            result.append(Glyph(crop, (bx + x0, by + y0, bw, bh), before))
     return result
 
 

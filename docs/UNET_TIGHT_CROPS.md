@@ -3,13 +3,20 @@
 The existing U-Net predicts character centres and widths. Its default crop
 windows can overlap, so a character classifier may see pieces of its neighbour.
 `unet_tight` keeps the same trained U-Net detections, chooses one vertical cut
-between adjacent predictions, then trims each non-overlapping strip to its ink.
+between adjacent predictions, limits each crop to its predicted character width,
+then trims that region to its actual ink. Thus a narrow `l` gets a narrow crop,
+while a wide `M` gets a wider one. Crops cannot borrow columns from a neighbour.
 This is closer to the digit path's crop style. It can also cut a real character
 stroke where two letters overlap; an improvement is not assumed.
 
 The original U-Net weights, original EMNIST CNN and default GUI route are not
 overwritten. A separate CNN is fine-tuned on synthetic EMNIST lines using the
 new crop geometry, then saved as `emnist_cnn_unet_tight.keras`.
+
+If you trained the tight-crop CNN before the adaptive-width update, retrain it:
+that earlier model saw full centre-to-centre strips, which are different from
+the crops now sent by the API. To preserve those older experimental weights,
+copy the file before running the full command below.
 
 From the repository root in the existing `(hnrs)` PowerShell environment:
 

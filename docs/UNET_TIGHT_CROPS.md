@@ -42,3 +42,30 @@ character accuracy on the same labelled drawings before claiming a gain.
 Do not copy the smoke model into the full model path or treat its result as a
 held-out evaluation. The report should identify this as a separate experiment
 only after a full run and labelled real-drawing checks.
+
+## Paired check on your own drawings
+
+Save the same untouched PNG/JPG files in a folder, for example
+`data/character_examples/`, then create a UTF-8 CSV beside them:
+
+```csv
+image,label
+word_01.png,Model
+word_02.png,Work
+```
+
+Use the actual text in each image, including its case and spaces. Do not pick
+only examples that one setup gets right. Aim for at least 20 varied drawings,
+including connected and separated letters. Then run:
+
+```powershell
+python -m text_recognition.evaluate_tight_crops --manifest data/character_examples/manifest.csv
+Get-Content artifacts/text/segmentation/tight_crop_paired.json
+Import-Csv artifacts/text/segmentation/tight_crop_paired.csv | Format-Table -AutoSize
+```
+
+This uses the real FastAPI route in-process. It saves each prediction, exact
+match, edit distance, crop count and API error. The JSON reports whole-word
+accuracy, character error rate and wrong crop counts for both deployed setups.
+An improvement here tests the **combined crop and separately trained CNN**;
+the training JSON alone only measures held-out synthetic crops.

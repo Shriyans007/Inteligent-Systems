@@ -34,18 +34,28 @@ def _boxes(mask):
 
 
 def _line_groups(boxes):
-    # Group tall strokes by their vertical centres; attach dots to the closest
-    # stroke on the same line instead of treating a dot as another text line.
+    # Different letters on one baseline have different heights and centres.
+    # Group by vertical ink overlap instead; attach small dots to a nearby
+    # horizontally aligned stem. This also keeps genuine separated lines apart.
+    if not boxes:
+        return []
     heights = [h for _, _, _, h in boxes]
     typical = float(np.median(heights))
     groups = []
-    for box in sorted(boxes, key=lambda b: b[1] + b[3] / 2):
+    for box in sorted(boxes, key=lambda b: b[2] * b[3], reverse=True):
         x, y, w, h = box
-        center = y + h / 2
-        candidates = [(abs(center - np.median([b[1] + b[3] / 2 for b in group])), group)
-                      for group in groups]
-        if candidates and min(candidates, key=lambda item: item[0])[0] < typical * 0.65:
-            min(candidates, key=lambda item: item[0])[1].append(box)
+        candidates = []
+        for group in groups:
+            overlap = max((max(0, min(y + h, gy + gh) - max(y, gy)) / min(h, gh)
+                           for _, gy, _, gh in group), default=0)
+            mark_near_stem = h < 0.4 * typical and any(
+                max(x, gx) < min(x + w, gx + gw) and
+                max(0, gy - (y + h), y - (gy + gh)) < 0.5 * typical
+                for gx, gy, gw, gh in group)
+            if overlap >= 0.25 or mark_near_stem:
+                candidates.append((overlap, group))
+        if candidates:
+            max(candidates, key=lambda item: item[0])[1].append(box)
         else:
             groups.append([box])
     return sorted(groups, key=lambda group: min(b[1] for b in group))

@@ -12,7 +12,7 @@ from PIL import Image
 from types import SimpleNamespace
 
 from segmentation.synthetic_lines import augment_line, random_text, render_line
-from segmentation.unet_segmenter import window_crop, tight_boundaries, tight_strip_crop
+from segmentation.unet_segmenter import window_crop, tight_boundaries, tight_character_crop
 from text_recognition.common import prepare_character
 
 
@@ -34,7 +34,7 @@ def overlap_crops(source, char_to_label, n_lines, seed=0, width=384, overlap=Tru
         for index, g in enumerate(glyphs):
             # The U-Net is accurate to a few pixels; imitate that so training is not too clean.
             if crop_mode == "tight":
-                item = tight_strip_crop(gray, cuts[index], cuts[index + 1])
+                item = tight_character_crop(gray, estimated[index], cuts[index], cuts[index + 1])
                 crop = item[0] if item is not None else None
             else:
                 cx = g.cx + rng.uniform(-0.08, 0.08) * g.w

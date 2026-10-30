@@ -135,6 +135,96 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   font-weight: 700;
 }
 
+/* Segmentation view: boxes, labels and the learned segmenter's cuts */
+.segment-view {
+  margin-top: 18px;
+  text-align: left;
+}
+
+.segment-view h3 {
+  margin: 0 0 8px;
+  color: #53647d;
+  font-size: .9rem;
+}
+
+/* The upload previews style every figure as a 72px thumbnail; undo that here. */
+.segment-view figure {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0 0 12px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.segment-frame {
+  position: relative;
+  width: 100%;
+  border: 1px solid #c9d6e6;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.segment-frame img,
+.segment-frame svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.segment-box {
+  fill: rgba(29, 99, 168, .08);
+  stroke: #1d63a8;
+  stroke-width: 2;
+}
+
+.segment-label {
+  fill: #1d63a8;
+  font-weight: 800;
+}
+
+.segment-cut {
+  stroke: #d64545;
+  stroke-width: 2;
+}
+
+.cut-profile {
+  display: block;
+  width: 100%;
+  height: 48px;
+  margin-top: 4px;
+  background: #f2f6fb;
+  border-radius: 6px;
+}
+
+.cut-curve {
+  fill: none;
+  stroke: #1d63a8;
+  stroke-width: 2;
+}
+
+.cut-threshold {
+  stroke: #8792a6;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.segment-view figcaption {
+  position: static;
+  width: auto;
+  height: auto;
+  margin-top: 4px;
+  border-radius: 0;
+  color: #718097;
+  background: none;
+  font-size: .75rem;
+  line-height: 1.4;
+  text-align: left;
+}
 .crop-inspection { margin-top: 20px; text-align: left; border-top: 1px solid #d4deeb; padding-top: 14px; }
 .crop-inspection h3 { margin: 0 0 6px; font-size: 1rem; }
 .crop-inspection p { margin: 0 0 12px; font-size: .78rem; line-height: 1.45; color: #53647d; }

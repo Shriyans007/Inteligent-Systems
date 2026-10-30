@@ -3,6 +3,47 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const allowedTypes = ["image/png", "image/jpeg", "image/bmp", "image/webp"];
 const fallbackModels = [{ key: "cnn", label: "Shallow CNN", available: false }];
 
+// Draws where the segmenter cut each image: a box and label for every piece and, for the
+// learned segmenter, its cut lines and its probability of a cut along the image.
+function SegmentView({ result, urls }) {
+  return (
+    <section className="segment-view" aria-label="How the image was segmented">
+      <h3>How the image was cut into pieces</h3>
+      {result.images.map((info, index) => {
+        const fontSize = Math.max(14, info.height * 0.14);
+        return (
+          <figure key={index}>
+            <div className="segment-frame" style={{ aspectRatio: `${info.width} / ${info.height}` }}>
+              {urls[index] && <img src={urls[index]} alt={`Input image ${index + 1}`} />}
+              <svg viewBox={`0 0 ${info.width} ${info.height}`} preserveAspectRatio="none">
+                {info.cuts?.map((x, cut) => (
+                  <line key={cut} x1={x} x2={x} y1={0} y2={info.height} className="segment-cut" vectorEffect="non-scaling-stroke" />
+                ))}
+                {result.predictions.filter((item) => item.image === index && item.bbox).map((item) => {
+                  const [x, y, width, height] = item.bbox;
+                  return (
+                    <g key={item.position}>
+                      <rect x={x} y={y} width={width} height={height} className="segment-box" vectorEffect="non-scaling-stroke" />
+                      <text x={x + 3} y={y + fontSize} fontSize={fontSize} className="segment-label">{item.digit ?? item.character}</text>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+            {info.profile && <>
+              <svg className="cut-profile" viewBox={`0 0 ${info.width} 100`} preserveAspectRatio="none" aria-label="Cut probability along the image">
+                <line x1={0} x2={info.width} y1={50} y2={50} className="cut-threshold" vectorEffect="non-scaling-stroke" />
+                <polyline points={info.profile.map(([x, p]) => `${x},${100 - p * 100}`).join(" ")} className="cut-curve" vectorEffect="non-scaling-stroke" />
+              </svg>
+              <figcaption>Blue: the CNN's probability of a cut at each column. Dashed: 50%. Red lines: where it cut (a cut through empty space changes nothing).</figcaption>
+            </>}
+          </figure>
+        );
+      })}
+    </section>
+  );
+}
+
 export default function App() {
   const [source, setSource] = useState("draw");
   const [files, setFiles] = useState([]);
@@ -17,6 +58,9 @@ export default function App() {
   const [segmenter, setSegmenter] = useState("auto");
   const [unetReady, setUnetReady] = useState(false);
   const [threshold, setThreshold] = useState(0.5);
+  const [segmenters, setSegmenters] = useState({ defaults: {}, segmenters: [] });
+  const [segmentation, setSegmentation] = useState("");
+  const [submitted, setSubmitted] = useState([]);
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
   const pointerRef = useRef(null);
@@ -25,6 +69,8 @@ export default function App() {
   const activeSegmenter = segmenter === "auto" ? (unetReady ? "unet" : "classical") : segmenter;
   const modelReady = (family === "character" ? characterModels : models)
     .some((item) => item.key === modelKey && item.available);
+  // Until the user picks one, each route uses its own default segmentation method.
+  const chosenSegmentation = segmentation || segmenters.defaults[family === "numbers" ? "numbers" : "characters"] || "";
   // Only the digit models report a test accuracy to set the threshold from.
   const selectedAccuracy = family === "numbers" ? models.find((item) => item.key === modelKey)?.accuracy : undefined;
 
@@ -48,6 +94,11 @@ export default function App() {
         setModelsLoaded(true);
       })
       .catch(() => { setModelsLoaded(true); setError("Could not check the available models. Is the backend running?"); });
+  }, []);
+  useEffect(() => {
+    // Older backends have no segmentation choice, so a failure just hides the selector.
+    fetch("/api/segmenters").then((response) => (response.ok ? response.json() : null))
+      .then((data) => { if (data) setSegmenters(data); }).catch(() => {});
   }, []);
   useEffect(() => () => previews.forEach(URL.revokeObjectURL), [previews]);
   // Test accuracy is measured across a dataset; it is not a confidence cutoff
@@ -121,6 +172,9 @@ export default function App() {
     } else if (family === "numbers") files.forEach((file) => body.append("files", file));
     else body.append("file", files[0]);
     body.append("model", modelKey);
+    if (chosenSegmentation) body.append("segmentation", chosenSegmentation);
+    // Keep the images that were sent, so the segmentation can be drawn on top of them.
+    setSubmitted(source === "draw" ? [canvasRef.current.toDataURL("image/png")] : previews);
     if (family === "character") {
       body.append("segmenter", activeSegmenter);
       body.append("show_crops", "true");
@@ -194,6 +248,13 @@ export default function App() {
               </optgroup>
             </select>
           </label>
+          {segmenters.segmenters.length > 0 && <label className="model-selector" htmlFor="segmentation-choice"><span>Segmentation method</span>
+            <select id="segmentation-choice" value={chosenSegmentation} disabled={loading}
+              onChange={(event) => { setSegmentation(event.target.value); setResult(null); }}>
+              {segmenters.segmenters.map((item) => <option key={item.key} value={item.key} disabled={item.available === false}>
+                {item.label}{item.available === false ? " (not trained)" : ""}
+              </option>)}
+            </select>
           {family === "character" && <label className="model-selector" htmlFor="segmenter-choice">
             <span>Character segmentation</span>
             <select id="segmenter-choice" value={segmenter} disabled={loading}
@@ -213,7 +274,7 @@ export default function App() {
           </label>}
           {!modelReady && modelsLoaded && <p className="hint">Train the selected model first, then restart the backend and refresh this page.</p>}
           {!result ? <div className="empty-result">Your prediction will appear here.</div> : "number" in result ? (
-            <div className="result"><p>Model: {result.model_label}</p><p>Predicted number</p><strong>{result.number}</strong>
+            <div className="result"><p>Model: {result.model_label}{result.segmentation_label ? ` · ${result.segmentation_label}` : ""}</p><p>Predicted number</p><strong>{result.number}</strong>
               <dl><div><dt>Average confidence</dt><dd>{(result.average_confidence * 100).toFixed(1)}%</dd></div><div><dt>Lowest digit</dt><dd>{(result.lowest_confidence * 100).toFixed(1)}%</dd></div></dl>
               <div className="digit-results">{result.predictions.map((item) => (
                 <span key={item.position} className={item.confidence < threshold ? "uncertain" : undefined}>
@@ -230,6 +291,7 @@ export default function App() {
                 </span>
               ))}</div>
             </div>
+          ) : <div className="result"><p>Predicted characters · {result.model_label}{result.segmentation_label ? ` · ${result.segmentation_label}` : ""}</p><strong>{result.text || "(no text detected)"}</strong>
           ) : <div className="result"><p>Predicted characters · {result.model_label}</p><strong>{result.text || "(no text detected)"}</strong>
             <p>Segmenter: {result.segmenter === "unet" ? "U-Net (experimental)" : "Classical"} · {result.glyph_count ?? result.predictions?.length} character crops</p>
             <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>
@@ -244,6 +306,7 @@ export default function App() {
               </figure>)}</div>
             </section>}
           </div>}
+          {result?.images && <SegmentView result={result} urls={submitted} />}
           {error && <p className="error" role="alert">{error}</p>}
           <div className="result-actions">
             <button onClick={recognise} disabled={loading || !modelReady || (source === "upload" ? !files.length : !drawn)}>

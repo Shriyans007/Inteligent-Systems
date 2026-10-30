@@ -169,6 +169,148 @@ Results from one run (seed 42, 400 numbers of 1-4 digits built from MNIST test d
   model has little tolerance for the small shifts that segmentation and
   re-centring introduce, whereas convolution and pooling absorb them.
 
+### Letters and digits (EMNIST)
+
+The same SVM can also be trained on EMNIST ByClass (62 classes: 10 digits, 26
+upper-case and 26 lower-case letters) and chosen under **Letters and digits**:
+
+```bash
+python -m svm_model.train_emnist
+```
+
+It uses the networks' EMNIST loader, so images are oriented the same way, and
+saves `emnist_svm.joblib`, `mapping.json`, `results.json`, `per_character.csv`
+and `confusion_matrix.csv` under `artifacts/text/character/svm/`. Training uses
+a random 20,000 of the 697,932 training images, because RBF SVM training time
+grows quickly with data size. Scoring uses a random 20,000 of the 116,323 test
+images (`--test-samples 0` scores all of them, slowly); the networks are scored
+on the full test set.
+
+Results from one run (seed 42, 188 s training):
+
+| | SVM (RBF) |
+|---|---|
+| Test accuracy, all 62 classes | 77.89% |
+| Digits (9,946 test images) | 93.15% |
+| Upper-case letters (5,384) | 67.38% |
+| Lower-case letters (4,670) | 57.49% |
+| Accuracy if upper and lower case of a letter count as the same | 81.58% |
+
+- The most common errors are characters that look the same in another class:
+  l read as 1 (401 times), O as 0 (352), I as 1 (223) and 0 as O (163).
+- 738 of the 4,422 errors only confuse the case of the same letter, such as m
+  and M or u and U. Without context a lone handwritten c and C have the same
+  shape, so the model favours the class it saw more often.
+- Lower-case c, f, i, m, o, s and u were never predicted correctly in this run.
+  EMNIST ByClass is unbalanced: digits are about half of the images (9,946 of
+  these 20,000), so the SVM leans towards digits and capitals when shapes overlap.
+
+## Benchmark: every digit model with every segmentation method
+
+The GUI and `/api/predict` accept a `segmentation` choice: connected components or
+contours, each with or without splitting touching digits. `GET /api/segmenters`
+lists them. One command runs every trained digit model with every segmentation
+method on the 400-number benchmark set, through the real API, and summarises the
+runs with `preprocessing.benchmark_metrics`:
+
+```bash
+python -m preprocessing.build_benchmark_set
+python -m cnn_model.benchmark_all
+```
+
+Results are saved in `artifacts/benchmark/all/` (`benchmark_comparison.csv`,
+`benchmark_summary.json` and one file per run). These results replace the
+two-model table above: the networks have since been trained in full (12 epochs
+with early stopping), and SVM digits now come from `predict()`.
+
+Results from one run (seed 42). Every segmentation method gave each model the same
+number of fully correct numbers, so the table shows one row per model (character
+error rate is for the methods without splitting; with splitting it is 0.001 higher
+because of one image):
+
+| Model | MNIST test accuracy | Numbers fully correct (of 400) | Digit accuracy | Character error rate | Seconds per 400 |
+|---|---|---|---|---|---|
+| Small ResNet | 98.63% | 94.75% (379) | 98.48% | 0.021 | ~8.8 |
+| Shallow CNN | 99.34% | 94.50% (378) | 98.28% | 0.023 | ~8.5 |
+| LeNet-5 | 98.78% | 93.75% (375) | 98.07% | 0.025 | ~8.4 |
+| MLP | 97.86% | 89.00% (356) | 95.95% | 0.047 | ~8.4 |
+| SVM (RBF) | 96.21% | 82.50% (330) | 93.21% | 0.073 | ~2.6 |
+
+- **Segmentation choice made no difference on this benchmark.** The benchmark
+  places digits with gaps between them, so no digits touch and both methods find
+  the same blobs. It therefore cannot show the value of splitting touching
+  digits; hand-drawn input in the GUI is needed for that.
+- **All 6 segmentation errors are over-segmentation**, the same 6 images for every
+  model and method: a digit drawn in separate strokes is cut into two pieces
+  (9 read as 91 and 99, 4 as 41, 75 as 754, 5985 as 59875, 2573 as 25673). On
+  5985, splitting touching digits cut a piece again (598275), which made it worse.
+- **Models without convolution lose most from clean MNIST to segmented crops:**
+  digit accuracy fell 3.00 points for the SVM and 1.91 for the MLP, against 0.15
+  to 1.06 for the three convolutional networks. Convolution and pooling tolerate
+  the small shifts that cropping introduces; pixel-by-pixel models do not.
+- **ResNet, CNN and LeNet-5 are within 4 numbers of each other**, too close to rank
+  on 400 images. The CNN is best on MNIST, ResNet on the benchmark.
+- **The SVM decision rule matters.** Switching SVM digits from the highest
+  `predict_proba` score to `predict()` changed 10 benchmark predictions: 6
+  became wrong and none became right (84.00% to 82.50%). `predict()` stays because
+  it is the rule the reported 96.21% test accuracy was measured with.
+- The SVM is about three times faster per request, because it skips TensorFlow.
+
+## Learned segmentation: the cut-point CNN
+
+The four methods above are rule-based (OpenCV): nothing is learned, and they treat
+every connected blob of ink as one digit, so touching digits are read as one. The
+**Learned cut-point CNN** option replaces those rules with a trained model. It looks
+at the whole number image and predicts, for every pixel column, the probability that
+one digit ends and the next begins; the image is cut wherever that probability is
+above 50%. The crops then go through the same preprocessing and recognition as
+before.
+
+```bash
+python -m segmentation_model.train              # about 12 minutes on a laptop CPU
+python -m segmentation_model.evaluate           # pieces produced on unseen test numbers
+python -m segmentation_model.build_touching_set # 300 numbers whose digits all touch
+python -m cnn_model.benchmark_all --models cnn svm --manifest data/touching/manifest.csv --output artifacts/benchmark/touching
+python -m cnn_model.benchmark_all --models cnn svm --segmentation components_split learned_cuts
+```
+
+- **Training data needs no hand-labelling.** `segmentation_model/data.py` builds
+  number images from MNIST training digits, some with gaps and some touching or
+  overlapping. Because the code places each digit, it knows where every boundary
+  is. Test numbers use MNIST test digits, which the model never sees in training.
+- **Model:** 146,113 parameters. Convolutions shrink the height only, so every
+  column keeps its own output and the model accepts numbers of any width. The loss
+  is binary cross-entropy weighted towards the rarer cut columns.
+- **In the GUI**, every method now shows "How the image was cut into pieces": a box
+  per piece and, for the learned method, its cut lines and its probability curve.
+
+Results from one run (seed 42, 15,000 training images):
+
+| Benchmark | Rule-based (components + split) | Learned cut-point CNN |
+|---|---|---|
+| Normal benchmark, 400 numbers with gaps: CNN | 94.50% (6 wrong piece counts) | **95.50%** (4) |
+| Normal benchmark: SVM | 82.50% | **83.75%** |
+| Touching benchmark, 300 numbers: CNN | 9.67% (263 wrong piece counts) | **64.00%** (37) |
+| Touching benchmark: SVM | 8.33% | **50.00%** |
+
+On 2,000 unseen synthetic test numbers (`segmentation_model.evaluate`), it produced the
+right number of pieces for 91.25% of numbers with mixed gaps and touching digits (4.70%
+too many, 4.05% too few), and for 78.95% when every digit touches (7.45% too many,
+13.60% too few).
+
+- **The first version failed on wide gaps.** Trained only on gaps up to 10 pixels,
+  it scored 26.50% on the normal benchmark: it merged digits whose gaps were wider
+  than anything it had seen. Training on gaps up to 30 pixels, with every empty
+  column between digits labelled as a cut, raised this to 95.50% and also improved
+  the touching benchmark (61.67% to 64.00%). The test data exposed a mismatch with
+  the training data.
+- **Count pieces, not cut columns.** The first training score counted every
+  predicted cut, so cuts through empty margins looked like errors even though they
+  change nothing. `segmentation_model.evaluate` instead counts the pieces that
+  `segment_learned()` actually returns.
+- **Remaining errors:** it can cut a stroke that sticks out of a digit. A hand-drawn
+  2345 with the 4's crossbar touching the 5 came out as 23455: the extra piece was
+  the crossbar, read as a 5 at 50.6% confidence, and the GUI flagged it as uncertain.
 ## Preprocessing and image acquisition (Person A)
 
 ### Preprocessing

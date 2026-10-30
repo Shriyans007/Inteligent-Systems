@@ -9,7 +9,7 @@ import mimetypes
 from pathlib import Path
 
 
-def evaluate_manifest(manifest: Path, output: Path, model: str = "cnn"):
+def evaluate_manifest(manifest: Path, output: Path, model: str = "cnn", segmentation: str | None = None):
     # Call the same API route as React to include segmentation and preprocessing.
     from fastapi.testclient import TestClient
     from api.main import app
@@ -35,7 +35,8 @@ def evaluate_manifest(manifest: Path, output: Path, model: str = "cnn"):
             content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
             with path.open("rb") as handle:
                 # Send the model choice exactly as the React selector does.
-                response = client.post("/api/predict", data={"model": model},
+                form = {"model": model, **({"segmentation": segmentation} if segmentation else {})}
+                response = client.post("/api/predict", data=form,
                                        files={"files": (path.name, handle, content_type)})
             response.raise_for_status()
             predicted = response.json()["number"]
@@ -43,6 +44,8 @@ def evaluate_manifest(manifest: Path, output: Path, model: str = "cnn"):
                             "correct": predicted == label, "length_match": len(predicted) == len(label)})
     summary = {
         "model": model,
+        # The API reports which method it used, including its default when none was chosen.
+        "segmentation": response.json().get("segmentation"),
         "images": len(details),
         "single_digit": sum(len(row["expected"]) == 1 for row in details),
         "multi_digit": sum(len(row["expected"]) > 1 for row in details),
@@ -61,8 +64,9 @@ def main():
     parser.add_argument("--manifest", type=Path, required=True, help="CSV containing image,label columns")
     parser.add_argument("--output", type=Path, default=Path("artifacts/upload_evaluation.json"))
     parser.add_argument("--model", default="cnn", help="Model key listed by /api/models, e.g. cnn or svm")
+    parser.add_argument("--segmentation", help="Segmentation key listed by /api/segmenters; default: the API's choice")
     args = parser.parse_args()
-    evaluate_manifest(args.manifest, args.output, args.model)
+    evaluate_manifest(args.manifest, args.output, args.model, args.segmentation)
 
 
 if __name__ == "__main__":

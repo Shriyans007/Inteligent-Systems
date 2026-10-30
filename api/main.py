@@ -364,9 +364,18 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
             prepared = [prepare_character(glyph.image) for glyph in glyphs]
             batch = np.stack(prepared)
             probabilities = predict_probabilities(classifier, model, batch, num_classes=len(mapping))
-            if segmentation is None and method == "unet" and model not in SKLEARN_MODELS:
+            if segmentation is None and method in {"unet", "unet_tight"} and model not in SKLEARN_MODELS:
+                # Tight strips can split a broad single glyph when U-Net puts
+                # two centres inside one connected stroke. Only join adjacent
+                # low-confidence pieces when their complete ink component is
+                # confidently classified as one character.
+                repair_options = ({"max_width_ratio": 1.15,
+                                   "min_merge_confidence": 0.85,
+                                   "min_confidence_gain": 0.15,
+                                   "max_first_confidence": 0.85}
+                                  if method == "unet_tight" else {})
                 glyphs, prepared, probabilities = refine_split_components(
-                    image, glyphs, prepared, probabilities, classifier)
+                    image, glyphs, prepared, probabilities, classifier, **repair_options)
                 batch = np.stack(prepared)
         indexes = predicted_digits(classifier, model, batch, probabilities)
         predictions = []

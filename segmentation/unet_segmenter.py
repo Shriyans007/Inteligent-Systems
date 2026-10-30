@@ -127,6 +127,18 @@ def tight_strip_crop(gray, left, right, padding=2):
     return gray[crop_y0:crop_y1, crop_x0:crop_x1], (bx0, by0, bx1 - bx0, by1 - by0)
 
 
+def tight_character_crop(gray, detection, left_cut, right_cut, margin=CROP_MARGIN):
+    """Use the U-Net's own width, clipped at neighbour cuts, then box its ink.
+
+    A whole Voronoi strip may contain background noise or a distant neighbour.
+    The predicted half-width gives each character its own size; the hard cuts
+    ensure the resulting crops never reuse columns from adjacent detections.
+    """
+    x0, x1 = window_bounds(detection.cx, detection.half_width, gray.shape[1], margin)
+    x0, x1 = max(x0, left_cut), min(x1, right_cut)
+    return tight_strip_crop(gray, x0, x1)
+
+
 def tight_boundaries(boxes, width):
     """One cut between adjacent U-Net detections, respecting their widths."""
     cuts = [0]
@@ -216,7 +228,7 @@ class UNetSegmenter:
         cuts = tight_boundaries(boxes, gray.shape[1]) if tight and boxes else None
         for i, b in enumerate(boxes):
             if tight:
-                item = tight_strip_crop(gray, cuts[i], cuts[i + 1])
+                item = tight_character_crop(gray, b, cuts[i], cuts[i + 1])
                 if item is None:
                     continue
                 crop, bbox = item

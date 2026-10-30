@@ -104,6 +104,41 @@ def window_crop(gray, cx, half_width, margin=CROP_MARGIN):
     return window[y0:y1]
 
 
+def tight_strip_crop(gray, left, right, padding=2):
+    """Digit-style crop: assign each column to one glyph, then trim to its ink.
+
+    This is deliberately separate from the overlapping U-Net windows. A cut
+    through shared ink can remove a true stroke, so it must be evaluated before
+    becoming the default.
+    """
+    gray = np.asarray(gray)
+    h, w = gray.shape[:2]
+    x0, x1 = max(0, int(np.floor(left))), min(w, int(np.ceil(right)))
+    if x1 <= x0:
+        return None
+    mask = _binary_for_detection(gray)[:, x0:x1] > 0
+    if mask.sum() < 6:
+        return None
+    rows, cols = np.where(mask)
+    bx0, bx1 = x0 + int(cols.min()), x0 + int(cols.max()) + 1
+    by0, by1 = int(rows.min()), int(rows.max()) + 1
+    crop_x0, crop_x1 = max(x0, bx0 - padding), min(x1, bx1 + padding)
+    crop_y0, crop_y1 = max(0, by0 - padding), min(h, by1 + padding)
+    return gray[crop_y0:crop_y1, crop_x0:crop_x1], (bx0, by0, bx1 - bx0, by1 - by0)
+
+
+def tight_boundaries(boxes, width):
+    """One cut between adjacent U-Net detections, respecting their widths."""
+    cuts = [0]
+    for left, right in zip(boxes[:-1], boxes[1:]):
+        proposed = (left.cx + left.half_width + right.cx - right.half_width) / 2
+        # Keep the cut between centres even if width estimates cross wildly.
+        cut = int(round(np.clip(proposed, left.cx + 1, right.cx - 1)))
+        cuts.append(max(cuts[-1] + 1, min(width - 1, cut)))
+    cuts.append(width)
+    return cuts
+
+
 def remove_disconnected_neighbours(gray, boxes, index):
     """Hide ink owned solely by another U-Net character centre.
 
@@ -173,13 +208,22 @@ class UNetSegmenter:
                                  int(rows.max() - rows.min() + 1), float(cx), float(hw), score))
         return boxes
 
-    def crops(self, gray, boxes=None, margin=CROP_MARGIN):
+    def crops(self, gray, boxes=None, margin=CROP_MARGIN, tight=False, with_boxes=False):
         """Raw grayscale PIL crops (one per box) for the character classifier."""
         gray = np.asarray(gray)
         boxes = self.find_characters(gray) if boxes is None else boxes
         result = []
+        cuts = tight_boundaries(boxes, gray.shape[1]) if tight and boxes else None
         for i, b in enumerate(boxes):
-            crop = window_crop(remove_disconnected_neighbours(gray, boxes, i), b.cx, b.half_width, margin)
+            if tight:
+                item = tight_strip_crop(gray, cuts[i], cuts[i + 1])
+                if item is None:
+                    continue
+                crop, bbox = item
+            else:
+                crop = window_crop(remove_disconnected_neighbours(gray, boxes, i), b.cx, b.half_width, margin)
+                bbox = (b.x, b.y, b.w, b.h)
             if crop is not None:
-                result.append(Image.fromarray(crop))
+                image = Image.fromarray(crop)
+                result.append((image, bbox) if with_boxes else image)
         return result

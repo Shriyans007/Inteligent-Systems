@@ -16,7 +16,9 @@ from text_recognition.common import prepare_character
 from text_recognition.layout import Glyph
 
 
-def refine_split_components(image, glyphs, prepared, probabilities, classifier):
+def refine_split_components(image, glyphs, prepared, probabilities, classifier,
+                            *, max_width_ratio=0.85, min_merge_confidence=0.95,
+                            min_confidence_gain=0.04, max_first_confidence=1.0):
     """Return (glyphs, tensors, scores), merging only well-supported false splits."""
     if len(glyphs) < 2:
         return glyphs, prepared, probabilities
@@ -25,7 +27,7 @@ def refine_split_components(image, glyphs, prepared, probabilities, classifier):
     count, _, stats, _ = cv2.connectedComponentsWithStats(_binary_for_detection(gray), 8)
     candidates = []
     for x, y, width, height, area in stats[1:count]:
-        if area < 12 or width / height >= 0.85:
+        if area < 12 or height == 0 or width / height >= max_width_ratio:
             continue
         owners = []
         for i, glyph in enumerate(glyphs):
@@ -49,8 +51,9 @@ def refine_split_components(image, glyphs, prepared, probabilities, classifier):
     for (i, glyph, tensor), scores in zip(candidates, candidate_scores):
         confidence = float(scores.max())
         first, second = probabilities[i], probabilities[i + 1]
-        if (confidence >= 0.95 and float(second.max()) < 0.85
-                and confidence > max(float(first.max()), float(second.max())) + 0.04
+        if (confidence >= min_merge_confidence and float(second.max()) < 0.85
+                and float(first.max()) < max_first_confidence
+                and confidence > max(float(first.max()), float(second.max())) + min_confidence_gain
                 and int(scores.argmax()) not in (int(first.argmax()), int(second.argmax()))):
             replacements[i] = (glyph, tensor, scores)
 

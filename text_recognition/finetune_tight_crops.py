@@ -73,13 +73,12 @@ def main():
     x, y = x[order], y[order]
     print(f"{len(over_y)} overlap crops + {0 if clean_y is None else len(clean_y)} clean images")
 
-    model = keras.models.load_model(args.base)
-    if model.optimizer is None:           # saved without training state
-        model.compile(optimizer=keras.optimizers.Adam(args.learning_rate),
-                      loss="sparse_categorical_crossentropy", metrics=["accuracy"])
-    else:                                 # keep the team's own loss; just lower the learning rate
-        model.optimizer.learning_rate = args.learning_rate
-    result = {"overlap_accuracy_before": accuracy(model, test_over_x, test_over_y)}
+    model = keras.models.load_model(args.base, compile=False)
+    model.compile(optimizer=keras.optimizers.Adam(args.learning_rate),
+                  loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+    result = {"seed_train": 1, "seed_test": 2,
+              "train_tight_crops": int(len(over_y)), "held_out_tight_crops": int(len(test_over_y)),
+              "tight_crop_accuracy_before": accuracy(model, test_over_x, test_over_y)}
     if clean_test_x is not None:
         result["clean_accuracy_before"] = accuracy(model, clean_test_x, clean_test_y)
     print(result)
@@ -87,7 +86,7 @@ def main():
     model.fit(x, y, batch_size=128, epochs=args.epochs, validation_split=0.05,
               callbacks=[keras.callbacks.EarlyStopping(patience=2, restore_best_weights=True)])
 
-    result["overlap_accuracy_after"] = accuracy(model, test_over_x, test_over_y)
+    result["tight_crop_accuracy_after"] = accuracy(model, test_over_x, test_over_y)
     if clean_test_x is not None:
         result["clean_accuracy_after"] = accuracy(model, clean_test_x, clean_test_y)
     args.output.parent.mkdir(parents=True, exist_ok=True)

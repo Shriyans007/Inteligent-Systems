@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import base64
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -15,8 +16,11 @@ from PIL import Image
 from cnn_model.models import _keras
 from preprocessing import prepare_mnist_digit
 from segmentation import crops_to_model_input, segment
-from text_recognition.common import prepare_character
+from text_recognition.common import CHAR_MODEL, prepare_character
 from text_recognition.emnist import model_paths
+from text_recognition.refine import refine_split_components
+from text_recognition.layout import segment_text
+from segmentation.unet_resnet import UNET_MODEL
 
 # These paths belong to the original ten-digit classifiers.
 MODEL_PATHS = {
@@ -276,11 +280,19 @@ CHARACTER_PATHS = {key: character_paths(key) for key in MODEL_PATHS}
 _extension_models = {}
 
 
+def crop_data_url(image: Image.Image) -> str:
+    """Encode a small glyph preview in the response; no image is stored on disk."""
+    buffer = io.BytesIO()
+    image.convert("L").save(buffer, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
 @app.get("/api/extension-models")
 def extension_models() -> dict:
-    return {"character_models": [{"key": key, "label": MODEL_LABELS[key],
+    return {"character_models": [{"key": key, "label": CHARACTER_LABELS[key],
                                   "available": path.is_file() and meta.is_file()}
-                                 for key, (path, meta) in CHARACTER_PATHS.items()]}
+                                 for key, (path, meta) in CHARACTER_PATHS.items()],
+            "segmenters": {"classical": True, "unet": UNET_MODEL.is_file()}}
 
 
 def get_extension_model(model_key="cnn"):
@@ -321,7 +333,7 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
             image_info = [{"filename": file.filename, "width": image.width, "height": image.height, **details}]
             if not crops:
                 raise ValueError("The image does not contain visible writing.")
-            if len(crops) > 30:
+            if len(glyphs) > 30:
                 raise ValueError("Draw no more than 30 separated characters in one image.")
             # Use the full image for one character, or classify separated
             # crops in left-to-right order for a longer drawing.

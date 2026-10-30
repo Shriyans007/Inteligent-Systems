@@ -11,7 +11,9 @@ from sklearn.metrics import accuracy_score
 
 from preprocessing import preprocess_pipeline
 
-RESULTS_DIR = Path("results")
+# next to this file, so it saves in the same place whether it's run from the
+# repo root or from inside preprocessing/
+RESULTS_DIR = Path(__file__).resolve().parent / "results"
 VARIANTS = [
     {"name": "Grayscale only", "binarize": False, "method": None},
     {"name": "Fixed threshold (128)", "binarize": True, "method": "fixed"},
@@ -78,7 +80,7 @@ def save_outputs(rows):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    RESULTS_DIR.mkdir(exist_ok=True)
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     csv_path = RESULTS_DIR / "preprocessing_compare.csv"
     with open(csv_path, "w", newline="") as f:

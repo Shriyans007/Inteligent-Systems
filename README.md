@@ -311,6 +311,124 @@ too many, 4.05% too few), and for 78.95% when every digit touches (7.45% too man
 - **Remaining errors:** it can cut a stroke that sticks out of a digit. A hand-drawn
   2345 with the 4's crossbar touching the 5 came out as 23455: the extra piece was
   the crossbar, read as a 5 at 50.6% confidence, and the GUI flagged it as uncertain.
+## Preprocessing and image acquisition (Person A)
+
+### Preprocessing
+
+`preprocessing/preprocessing.py` prepares an image for the digit models with
+`preprocess_pipeline()`: grayscale, resize to 28x28 (Lanczos), an optional
+threshold, then scale the pixels to 0-1. The threshold can be a fixed value
+(`method="fixed"`, default 128) or Otsu's method (`method="otsu"`), which picks
+a threshold for each image. The default is grayscale only (`binarize=False`).
+The API, the segmenter and the CNN prediction code all use this through the
+shared `prepare_mnist_digit()` step, which crops and centres each digit first.
+
+`preprocessing/preprocessing_compare.py` compared the three options by training
+the same small MLP (100 hidden units) on each version of 5,000 MNIST images
+from mlxtend, with a stratified 80/20 split. It needs `pip install mlxtend`.
+
+| Method | Test accuracy |
+|---|---|
+| Grayscale only | 92.8% |
+| Fixed threshold (128) | 91.0% |
+| Otsu threshold | 91.2% |
+
+Grayscale only was chosen because it scored highest and keeps the soft grey
+edges of each stroke, which the models were trained on. Both thresholds turn
+those edges into hard black and white steps. They are still available as
+options in case a very noisy photo needs them.
+
+### Image acquisition
+
+`preprocessing/image_acquisition.py` gets a number image in two ways:
+
+```bash
+python -m preprocessing.image_acquisition file path/to/photo.jpg --output number.png
+python -m preprocessing.image_acquisition folder preprocessing/sample_digits --output number.png --height 28 --spacing 4
+```
+
+`load_number_image()` applies the rotation tag that phone cameras save, so a
+photo taken sideways loads the right way up. `build_number_from_digits()` joins
+the digit images in a folder from left to right in file name order, with
+numbers in names compared as numbers, so `digit_10.png` comes after
+`digit_9.png`.
+
+### Figures
+
+```bash
+python -m preprocessing.report_figures
+```
+
+This saves `preprocessing/results/preprocessing_steps.png` (the sample digits
+with each preprocessing option side by side) and
+`preprocessing/results/acquisition_example.png` (separate digit images and the
+number image joined from them).
+
+## Benchmark metrics and real photos (Person A)
+
+The commands above save one results file per model. To score them all in one go:
+
+```bash
+python -m preprocessing.benchmark_metrics --results artifacts/benchmark_cnn.json artifacts/benchmark_svm.json --plot
+```
+
+This prints a table for each model and number length, and saves
+`artifacts/benchmark/benchmark_comparison.csv`, `benchmark_summary.json` and,
+with `--plot`, `benchmark_accuracy.png` (needs matplotlib). The metrics are:
+
+- **Exact accuracy** - the whole number has to be right.
+- **Digit accuracy** - share of digits right, only counting numbers where
+  segmentation found the right number of digits, so the digits line up.
+- **Character error rate (CER)** - edit distance divided by the number of
+  expected digits, so "308" read as "38" is one error, not a whole wrong number.
+- **Segmentation errors** - the prediction has the wrong number of digits.
+- **Classifier errors** - right number of digits, but at least one is wrong.
+
+It also lists the images that every model got the wrong digit count on. All
+models share the same segmentation step, so those errors come from segmentation.
+
+### Real handwritten photos
+
+MNIST digits are cleaner than real handwriting, so the same benchmark can also
+be run on real photos. Put the photos in one folder (for example `data/photos/`,
+which is gitignored) and name each one with its correct number first, e.g.
+`527.jpg` or `527_02.jpg`. iPhone HEIC photos need to be exported as JPG first.
+
+```bash
+python -m preprocessing.build_photo_manifest data/photos
+python -m cnn_model.evaluate_uploads --manifest data/photos/manifest.csv --model cnn --output artifacts/photos_cnn.json
+python -m cnn_model.evaluate_uploads --manifest data/photos/manifest.csv --model svm --output artifacts/photos_svm.json
+python -m preprocessing.benchmark_metrics --results artifacts/photos_cnn.json artifacts/photos_svm.json --output artifacts/photos --plot
+```
+
+Files that don't start with a number are skipped and listed, so they can be
+renamed and the manifest rebuilt.
+
+### Looking at the mistakes
+
+`benchmark_metrics` also saves `benchmark_errors.csv`, with one row for every
+wrong prediction (model, image, expected, predicted and whether it was a
+segmentation or classifier error). To see the actual images in one picture:
+
+```bash
+python -m preprocessing.error_gallery --results artifacts/benchmark_svm.json
+python -m preprocessing.error_gallery --results artifacts/benchmark_cnn.json --only segmentation
+```
+
+This saves `artifacts/benchmark/<model>_errors.png`. Red borders are
+segmentation errors and orange borders are classifier errors. `--limit` sets
+how many are shown (default 40).
+
+### A messier benchmark set
+
+By default the benchmark digits are evenly spaced and on a straight line.
+`--jitter` moves each digit up or down and makes each gap wider or tighter at
+random (in MNIST pixels), which is closer to real handwriting. It uses the same
+digits and labels as the neat set, so the two can be compared directly:
+
+```bash
+python -m preprocessing.build_benchmark_set --jitter 8 --output data/benchmark_jitter
+```
 
 ## Research extension: letters and digits
 
@@ -323,9 +441,11 @@ MNIST models. The default MNIST CNN is unchanged.
 The interface has one drawing area for handwriting. Choose an available
 **Letters and digits** model for separated characters (including numbers), or
 an available **Digits only** model for the original MNIST number prediction
-path. Uploaded images use the same selected path. It joins separate character
-crops from left to right; connected handwriting may be treated as one crop,
-and spaces, whole words and lines are not inferred.
+path. Uploaded images use the same selected path. Character segmentation
+groups short gaps in a stroke, then keeps wider gaps as spaces and separate
+lines as newlines. This is a layout estimate for separated handwriting;
+connected/cursive letters and ambiguous uppercase/lowercase shapes may still
+be wrong. The digit segmentation and default digit CNN are unchanged.
 
 Keep the five EMNIST ByClass files locally under `data/emnist/byclass/` (this directory is gitignored):
 
@@ -374,6 +494,26 @@ python -m text_recognition.emnist evaluate --model resnet
 python -m text_recognition.emnist compare
 ```
 
+To test whether more MLP capacity helps EMNIST, keep the original 128-unit MLP
+and train a separate 256→128-unit MLP with the same split, optimizer, epoch
+limit and early-stopping rule:
+
+```powershell
+python -m text_recognition.emnist train --model mlp_large --quick --epochs 2
+python -m text_recognition.emnist train --model mlp_large --epochs 12
+python -m text_recognition.emnist evaluate --model mlp_large
+```
+
+The full model, its 62-class mapping, confusion matrix, per-character results
+and test score save under `artifacts/text/character/mlp_large/`. After training,
+**Larger MLP (256 + 128)** becomes selectable in the GUI. The original four
+model comparison and MNIST digit models are unchanged. In a matched run using
+EMNIST ByClass, the original MLP (108,478 parameters) scored 83.285% and the
+larger MLP (241,854 parameters) scored 84.247% on the same 116,323 held-out
+characters. Some individual classes declined, so report per-character results
+as well as overall accuracy. A larger classifier cannot recover letters that
+the segmenter combines into a single crop.
+
 The character CNN saves to `artifacts/text/character/emnist_cnn.keras`, with
 `mapping.json`, `results.json`, `per_character.csv` and
 `confusion_matrix.csv` beside it. The other models save under
@@ -381,6 +521,198 @@ The character CNN saves to `artifacts/text/character/emnist_cnn.keras`, with
 `artifacts/text/character/comparison.csv`. The training data is split into
 training and validation sets, while the EMNIST test set is held out until
 evaluation. Only locally measured results belong in these output files.
+
+Some lowercase EMNIST ByClass labels (notably `c`, `o`, `s` and `u`) are
+frequently confused with uppercase letters or digits. For an optional
+comparison, train a **new** CNN with moderate inverse-frequency weighting of
+the training labels; it does not replace the original four results or models:
+
+```powershell
+python -m text_recognition.emnist train --model cnn_case_balanced --quick --epochs 2
+python -m text_recognition.emnist train --model cnn_case_balanced --epochs 12
+python -m text_recognition.emnist evaluate --model cnn_case_balanced
+```
+
+The full model and its test metrics are saved separately in
+`artifacts/text/character/cnn_case_balanced/`. Compare its `results.json` and
+`per_character.csv` with the original CNN, especially lowercase and uppercase
+confusion pairs, before selecting **Case-balanced CNN (experimental)** in the
+GUI. It becomes available only after training locally. Weighting might improve
+rare classes or reduce accuracy elsewhere; no improvement is assumed. Record
+the outcome on labelled uploaded/drawn images as well as held-out EMNIST.
+
+#### Checking character confusions and trying Hy's suggestions
+
+The original CNN remains the default. Its 62-class confusion matrix is enough
+to find the biggest mistakes without retraining or downloading anything. From
+the project root, with `(hnrs)` active:
+
+```powershell
+python -m text_recognition.confusions
+Import-Csv "artifacts\text\character\diagnosis\case_pairs.csv" | Where-Object { $_.letter -in @('c','o','s','g','q','r') } | Format-Table
+```
+
+`top_confusions.csv` lists actual -> predicted counts and the fraction of that
+actual class; `case_pairs.csv` shows both directions for every letter. They
+save in `artifacts/text/character/diagnosis/`. Look at O/o/0 and I/l/1 as well
+as C/c and S/s. Similar shapes can remain ambiguous in a single 28x28 crop;
+mistakes between visibly different shapes are more useful for spotting a
+preprocessing or model problem. This diagnosis uses only the saved test matrix.
+
+These **new, untrained experiments** use the same EMNIST 62-label mapping and
+train/validation/test split as the original run. The first keeps the shallow
+CNN and adds random rotations up to 7 degrees, shears up to 0.07 and shifts up
+to 1.5 pixels. The second uses that same light augmentation with a four-conv
+CNN, batch normalization and dropout. Only training batches are changed;
+validation, test and GUI images use the existing preprocessing. No flips or
+strong warps are used because those can change a character's identity.
+
+```powershell
+python -m text_recognition.emnist check
+python -m text_recognition.emnist train --model cnn_light_aug --quick --epochs 2
+python -m text_recognition.emnist train --model cnn_deep_aug --quick --epochs 2
+python -m text_recognition.emnist train --model cnn_light_aug --epochs 12
+python -m text_recognition.emnist train --model cnn_deep_aug --epochs 12
+python -m text_recognition.emnist evaluate --model cnn_light_aug
+python -m text_recognition.emnist evaluate --model cnn_deep_aug
+python -m text_recognition.confusions --matrix "artifacts\text\character\cnn_light_aug\confusion_matrix.csv" --output "artifacts\text\character\cnn_light_aug\diagnosis"
+python -m text_recognition.confusions --matrix "artifacts\text\character\cnn_deep_aug\confusion_matrix.csv" --output "artifacts\text\character\cnn_deep_aug\diagnosis"
+```
+
+The quick models go under `artifacts/text/character/<model>/quick/`; full models
+and their `results.json`, `per_character.csv`, `confusion_matrix.csv`, and
+`mapping.json` go under `artifacts/text/character/<model>/`. Those local
+artifacts are excluded from Git. Compare test accuracy and individual
+confusions with the original model, then check a small set of your own
+labelled drawings/uploads. A better dataset score is not guaranteed and does
+not prove every upper/lowercase pair can be resolved without word context.
+The new models appear in the GUI only when saved locally, and selection is
+manual; training them does not change the original CNN or digit model.
+
+#### Optional overlapping-character segmenter (Person B)
+
+This is an **experimental segmentation model**, separate from the EMNIST
+character CNN. It predicts character positions in a handwriting line; the
+selected character CNN still classifies each crop. The U-Net needs training
+before it can be tested. From the project root in `(hnrs)` PowerShell:
+
+```powershell
+python -m segmentation.train_unet train --stub --steps 5 --batch 2 --output "artifacts\text\segmentation\smoke_unet.keras"
+python -m segmentation.train_unet train --data "data\emnist\byclass" --steps 3000
+python -m segmentation.train_unet evaluate --data "data\emnist\byclass"
+Get-Content "artifacts\text\segmentation\segmentation_results.json"
+```
+
+The stub uses computer-drawn characters and is only a check that training can
+start. The full run uses your local EMNIST files and saves
+`artifacts/text/segmentation/unet_resnet.keras`. The evaluation generates
+synthetic lines using held-out EMNIST test characters and reports detection
+precision, recall and exact character count; it does **not** measure accuracy
+on your own drawings. Training on Windows CPU can take a long time. No U-Net
+weights or measured results are included in the repository.
+
+To try it in the GUI, start the API from the project root and refresh the GUI.
+Choose a trained character classifier, then select **U-Net · touching characters**
+under **Character segmentation**. This option is disabled until the full
+`unet_resnet.keras` file exists at the path above. The five-step smoke model
+has a different filename and does not enable the option. The result shows
+which segmenter ran and how many character crops it produced; compare those
+counts and predictions on the same uploaded image. The GUI defaults to
+**Automatic**: it uses U-Net when full trained weights are available and
+Classical otherwise. You can still select either segmenter explicitly. Older
+API clients that omit a segmenter continue to use Classical unless overridden
+with `HNRS_CHARACTER_SEGMENTER`.
+
+The environment variable remains available for older clients that do not send
+a segmenter choice:
+
+```powershell
+$env:HNRS_CHARACTER_SEGMENTER = "unet"
+python -m uvicorn api.main:app --reload
+```
+
+The GUI choice overrides the environment variable. The existing number route
+is independent. To change the default for older clients, stop the API and run:
+
+```powershell
+$env:HNRS_CHARACTER_SEGMENTER = "classical"
+python -m uvicorn api.main:app --reload
+```
+
+`classical` is the API default. Record the actual text, crop count, and both
+predictions for several labelled examples, especially touching characters.
+If U-Net produces one crop for two joined characters, segmentation is failing;
+if it produces two crops but the letters are wrong, investigate the character
+classifier and the crop images. The GUI now shows each raw U-Net crop alongside
+the 28 × 28 image sent to the classifier. A correct crop count alone does not
+mean the crops contain complete individual letters.
+
+U-Net crops now have an 8% side margin and hide disconnected ink assigned to
+another character centre. Ink joining two centres stays in both crops. This
+change was selected by comparing crop variants on EMNIST training characters
+composed into random five-character lines. To reproduce the comparison on your
+own trained CNN/U-Net and then on held-out EMNIST test characters, run:
+
+```powershell
+python -m text_recognition.evaluate_crop_windows train --repeats 5
+python -m text_recognition.evaluate_crop_windows test --repeats 5
+```
+
+Results, including all 62 character classes and separate/overlap scores, are
+saved under `artifacts/text/segmentation/crop_windows_<split>.json`. With the
+fine-tuned U-Net and uploaded EMNIST CNN, the original crop scored 42.9% and
+the selected crop 55.7% on 2,979 matched glyphs from 620 held-out synthetic
+five-character lines. Fifty-three classes improved, seven tied and two
+declined with this fine-tuned U-Net. These scores evaluate the
+classifier on correctly matched U-Net detections; they do not include missed
+characters or establish accuracy on natural drawings.
+
+A separate 250-step EMNIST fine-tuning run of the supplied U-Net (seed 853,
+batch 8, learning rate 0.0001) improved exact line detection from 56.0% to
+58.2% on 600 held-out synthetic lines with a different seed. Recall rose from
+93.6% to 94.1%, with precision approximately 99.5%. On the reproducible 620
+five-character lines above, exact lines rose from 484 to 488 and matched
+characters from 2,966 to 2,979 out of 3,100. The `unet_resnet.keras` used by
+the API must be replaced with the fine-tuned weights and the API restarted;
+changing the Python code alone does not update those weights. The old weights
+can be retained separately as a backup. Some overlapping letters are still
+missed and real drawn words need a labelled evaluation of their own.
+
+The original EMNIST classifiers were trained on isolated characters. To test
+whether training on crops with neighbouring ink helps, use the separate
+overlap fine-tuning experiment. First run a small check that saves outside the
+GUI's model path:
+
+```powershell
+python -m text_recognition.finetune_overlap --data "data\emnist\byclass" --lines 200 --clean 2000 --epochs 1 --output "artifacts\text\character\overlap_check.keras"
+```
+
+If that succeeds, train and evaluate the full experiment:
+
+```powershell
+python -m text_recognition.finetune_overlap --data "data\emnist\byclass"
+Get-Content "artifacts\text\character\overlap_finetune_results.json"
+```
+
+Restart the API and refresh the GUI. **Overlap fine-tuned CNN (experimental)**
+appears when its saved model exists. Compare its clean and synthetic overlap
+accuracy against the original before selecting it for a demonstration, and
+compare actual labelled drawings with the same U-Net segmenter. Its synthetic
+scores do not establish an improvement on real handwriting. The case-size
+resolver remains a separate research script and is not part of this GUI route.
+
+The CNN option requires `artifacts/text/character/emnist_cnn_overlap.keras`
+and the original `mapping.json`. Fine-tuned U-Net weights belong in
+`artifacts/text/segmentation/unet_resnet.keras`; that file alone does not train
+or enable the CNN option. A separate balanced-EMNIST experiment blended the
+original CNN (75%) with an overlap-trained CNN (25%) to limit uppercase and
+digit regressions. On 2,979 matched glyphs in held-out synthetic lines it
+scored 58.2%, versus 55.7% for the original CNN with the same U-Net and crops.
+Across 62 classes, 32 improved, 21 tied and nine fell by at most 3.6 percentage
+points. The simple full overlap fine-tune command above can improve overall
+accuracy while substantially hurting some uppercase classes; it is a separate
+experiment from the blended model. Neither result guarantees accuracy on
+arbitrary real drawings.
 
 Start FastAPI and React in separate PowerShell terminals:
 

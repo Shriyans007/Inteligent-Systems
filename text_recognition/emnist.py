@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 import struct
 import numpy as np
-from cnn_model.models import build_cnn, build_mlp, build_lenet5, build_resnet, compile_model, _keras
+from cnn_model.models import build_cnn, build_mlp, build_mlp_large, build_lenet5, build_resnet, compile_model, _keras
 from .common import CHAR_MODEL, CHAR_MAPPING
+from .augmentation import augment_batch
+from .emnist_model import build_deep_cnn
 
 FILES = {"train_images": "emnist-byclass-train-images-idx3-ubyte.gz",
          "train_labels": "emnist-byclass-train-labels-idx1-ubyte.gz",
@@ -15,6 +17,9 @@ FILES = {"train_images": "emnist-byclass-train-images-idx3-ubyte.gz",
          "test_labels": "emnist-byclass-test-labels-idx1-ubyte.gz",
          "mapping": "emnist-byclass-mapping.txt"}
 BUILDERS = {"cnn": build_cnn, "mlp": build_mlp, "lenet5": build_lenet5, "resnet": build_resnet}
+EXPERIMENTAL_BUILDERS = {**BUILDERS, "mlp_large": build_mlp_large, "cnn_case_balanced": build_cnn,
+                         "cnn_light_aug": build_cnn, "cnn_deep_aug": build_deep_cnn}
+AUGMENTED = {"cnn_light_aug", "cnn_deep_aug"}
 
 
 def model_paths(name, base=CHAR_MODEL.parent, quick=False):
@@ -89,7 +94,7 @@ def evaluate(model, x, y, mapping, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["check", "preview", "train", "evaluate", "compare"])
-    parser.add_argument("--model", choices=BUILDERS, default="cnn", help="One of the original four architectures; default: cnn")
+    parser.add_argument("--model", choices=EXPERIMENTAL_BUILDERS, default="cnn", help="Architecture or separate experiment; default: cnn")
     parser.add_argument("--data", type=Path, default=Path("data/emnist/byclass"))
     parser.add_argument("--output", type=Path, default=CHAR_MODEL.parent)
     parser.add_argument("--epochs", type=int, default=12)
@@ -146,21 +151,38 @@ def main():
     if args.quick: order = order[:4096]
     cut = int(len(order)*0.9)
     train, validation = order[:cut], order[cut:]
-    # Reuse the four MNIST layouts, but build fresh weights with 62 outputs.
-    model = compile_model(BUILDERS[args.model](62))
+    # Reuse the MNIST layouts, but build fresh weights with 62 outputs.
+    if args.model in {"mlp", "mlp_large"}:
+        _keras().utils.set_random_seed(42)
+    model = compile_model(EXPERIMENTAL_BUILDERS[args.model](62))
     output.mkdir(parents=True, exist_ok=True)
     mapping_path.write_text(json.dumps(mapping, indent=2))
     keras = _keras()
+    weights = None
+    if args.model == "cnn_case_balanced":
+        # Mild inverse-frequency weighting gives rare lower-case labels more
+        # influence without replacing the measured four-model comparison.
+        counts = np.bincount(y[train], minlength=62)
+        weights = np.clip(np.sqrt(np.median(counts[counts > 0]) / np.maximum(counts, 1)), 0.5, 4.0).astype(np.float32)
+        print("Training a separate weighted CNN; compare its held-out results with the original before selecting it.")
     class Batches(keras.utils.PyDataset):
         # Convert one batch at a time so the large train set stays as uint8.
-        def __init__(self, indices):
+        def __init__(self, indices, augment=False):
             super().__init__()
             self.indices = indices
+            self.augment = augment
+            self.epoch = 0
         def __len__(self): return (len(self.indices)+127)//128
         def __getitem__(self, index):
             selected = self.indices[index*128:(index+1)*128]
-            return x[selected].astype(np.float32)/255, y[selected]
-    model.fit(Batches(train), validation_data=Batches(validation),
+            images = x[selected].astype(np.float32)/255
+            if self.augment:
+                images = augment_batch(images, seed=42 + self.epoch * len(self) + index)
+            batch = images, y[selected]
+            return (*batch, weights[y[selected]]) if weights is not None else batch
+        def on_epoch_end(self):
+            self.epoch += 1
+    model.fit(Batches(train, augment=args.model in AUGMENTED), validation_data=Batches(validation), verbose=2,
               epochs=args.epochs if not args.quick else min(args.epochs, 2),
               callbacks=[_keras().callbacks.EarlyStopping(patience=3, restore_best_weights=True)])
     model.save(model_path)

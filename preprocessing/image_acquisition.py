@@ -8,7 +8,7 @@ Gets the input "number" image in one of two ways:
 
 import re
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 def load_number_image(path: str) -> Image.Image:
@@ -16,7 +16,13 @@ def load_number_image(path: str) -> Image.Image:
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Cannot find image at {path}")
-    return Image.open(path)
+    with Image.open(path) as image:
+        # phone cameras often save photos sideways with a rotation tag instead
+        # of actually rotating the pixels, so apply that tag here
+        upright = ImageOps.exif_transpose(image)
+        # read the pixels now so the file isn't left open afterwards
+        upright.load()
+    return upright
 
 
 def _natural_sort_key(path: Path):
@@ -61,26 +67,33 @@ def build_number_from_digits(folder: str, height: int = 28, spacing: int = 4) ->
     return canvas
 
 
-if __name__ == "__main__":
-    import sys
+def main(argv=None) -> Path:
+    import argparse
 
-    if len(sys.argv) < 3:
-        print("Usage:")
-        print("  python image_acquisition.py file <path_to_image>")
-        print("  python image_acquisition.py folder <path_to_digit_folder>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Get a number image from a file or a folder of digit images.")
+    parser.add_argument("mode", choices=["file", "folder"],
+                        help="file = load one image, folder = join the digit images in a folder")
+    parser.add_argument("target", help="Path to the image file or the digit folder")
+    parser.add_argument("--output", default="acquired_number.png")
+    parser.add_argument("--height", type=int, default=28, help="Digit height when joining a folder")
+    parser.add_argument("--spacing", type=int, default=4, help="Gap between digits when joining a folder")
+    args = parser.parse_args(argv)
 
-    mode, target = sys.argv[1], sys.argv[2]
+    try:
+        if args.mode == "file":
+            img = load_number_image(args.target)
+        else:
+            img = build_number_from_digits(args.target, height=args.height, spacing=args.spacing)
+    except FileNotFoundError as error:
+        raise SystemExit(f"Error: {error}")
 
-    if mode == "file":
-        img = load_number_image(target)
-    elif mode == "folder":
-        img = build_number_from_digits(target)
-    else:
-        print("First argument must be 'file' or 'folder'")
-        sys.exit(1)
-
-    out_path = "acquired_number.png"
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(out_path)
     print(f"Saved: {out_path}")
     print(f"Size: {img.size}, mode: {img.mode}")
+    return out_path
+
+
+if __name__ == "__main__":
+    main()

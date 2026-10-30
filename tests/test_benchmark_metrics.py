@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from preprocessing.benchmark_metrics import (edit_distance, load_results, save_outputs,
-                                             shared_segmentation_errors, summarise)
+from preprocessing.benchmark_metrics import (edit_distance, error_rows, load_results, save_accuracy_plot,
+                                             save_errors, save_outputs, shared_segmentation_errors, summarise)
 
 
 def _case(expected, predicted):
@@ -98,3 +98,31 @@ def test_load_results_rejects_file_without_cases(tmp_path):
     wrong.write_text(json.dumps([{"model": "CNN selected", "test_accuracy": 0.99}]))
     with pytest.raises(ValueError, match="cases"):
         load_results([wrong])
+
+
+def test_save_accuracy_plot_writes_a_png(tmp_path):
+    pytest.importorskip("matplotlib")
+    summaries = {
+        "cnn": summarise([_case("5", "5"), _case("12", "12"), _case("308", "38")]),
+        "svm": summarise([_case("5", "3"), _case("12", "12"), _case("308", "308")]),
+    }
+    path = save_accuracy_plot(summaries, tmp_path / "plots" / "accuracy.png")
+    # every PNG file starts with the same 8 bytes
+    assert path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_error_rows_only_lists_wrong_answers_with_their_cause():
+    results = {"cnn": [_case("5", "5"), _case("42", "47"), _case("308", "38")]}
+    rows = error_rows(results)
+    assert [(r["expected"], r["predicted"], r["error_type"]) for r in rows] == [
+        ("42", "47", "classifier"), ("308", "38", "segmentation")]
+    assert all(r["model"] == "cnn" for r in rows)
+
+
+def test_save_errors_writes_a_csv_row_per_mistake(tmp_path):
+    results = {"cnn": [_case("5", "3")], "svm": [_case("5", "3"), _case("12", "1")]}
+    path = save_errors(results, tmp_path / "errors.csv")
+    with open(path, newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert [(r["model"], r["error_type"]) for r in rows] == [
+        ("cnn", "classifier"), ("svm", "classifier"), ("svm", "segmentation")]

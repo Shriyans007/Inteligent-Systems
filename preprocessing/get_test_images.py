@@ -10,7 +10,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-OUT_DIR = Path("sample_digits")
+# next to this file, where the committed sample_digits folder already is
+OUT_DIR = Path(__file__).resolve().parent / "sample_digits"
 
 
 def save_sample_digits(n: int = 10):

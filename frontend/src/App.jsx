@@ -263,8 +263,9 @@ export default function App() {
               <option value="auto">Automatic · U-Net when trained</option>
               <option value="classical">Classical · separated characters</option>
               <option value="unet" disabled={!unetReady}>U-Net · touching characters{unetReady ? " (experimental)" : " (train full model first)"}</option>
+              <option value="unet_tight" disabled={!unetReady}>U-Net · tight character crops{unetReady ? " (experimental)" : " (train full model first)"}</option>
             </select>
-            <small>{unetReady ? "Automatic currently uses U-Net; choose Classical to compare." : "Automatic currently uses Classical until U-Net weights are installed."}</small>
+            <small>{segmenter === "unet_tight" ? "Tight crops use one non-overlapping strip per character. Select the separately trained tight-crop CNN when available." : unetReady ? "Automatic currently uses U-Net." : "Automatic currently uses Classical until U-Net weights are installed."}</small>
           </label>}
           {family === "numbers" && <label className="threshold-control" htmlFor="threshold-choice">
             <span>Flag digits below {(threshold * 100).toFixed(0)}% confidence</span>
@@ -293,7 +294,7 @@ export default function App() {
               ))}</div>
             </div>
           ) : <div className="result"><p>Predicted characters · {result.model_label}</p><strong>{result.text || "(no text detected)"}</strong>
-            <p>Segmenter: {result.segmenter === "unet" ? "U-Net (experimental)" : "Classical"} · {result.glyph_count ?? result.predictions?.length} character crops</p>
+            <p>Segmenter: {result.segmenter === "unet_tight" ? "U-Net tight crops (experimental)" : result.segmenter === "unet" ? "U-Net (experimental)" : "Classical"} · {result.glyph_count ?? result.predictions?.length} character crops</p>
             <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>
             <div className="digit-results">{result.predictions?.map((item) => <span key={item.position}>{item.character}<small>{(item.confidence * 100).toFixed(1)}%</small></span>)}</div>
             {result.predictions?.some((item) => item.crop_preview) && <section className="crop-inspection" aria-label="Character crop inspection">

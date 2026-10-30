@@ -280,11 +280,13 @@ CHARACTER_PATHS = {key: character_paths(key) for key in MODEL_PATHS}
 for key in ("cnn_case_balanced", "cnn_light_aug", "cnn_deep_aug", "mlp_large"):
     CHARACTER_PATHS[key] = model_paths(key)[1:]
 CHARACTER_PATHS["cnn_overlap"] = (CHAR_MODEL.with_name("emnist_cnn_overlap.keras"), model_paths("cnn")[2])
+CHARACTER_PATHS["cnn_unet_tight"] = (CHAR_MODEL.with_name("emnist_cnn_unet_tight.keras"), model_paths("cnn")[2])
 CHARACTER_LABELS = {**MODEL_LABELS, "cnn_case_balanced": "Case-balanced CNN (experimental)",
                     "cnn_light_aug": "CNN with light augmentation (experimental)",
                     "cnn_deep_aug": "Deeper CNN with augmentation (experimental)",
                     "mlp_large": "Larger MLP (256 + 128)",
-                    "cnn_overlap": "Overlap fine-tuned CNN (experimental)"}
+                    "cnn_overlap": "Overlap fine-tuned CNN (experimental)",
+                    "cnn_unet_tight": "CNN for tight U-Net crops (experimental)"}
 _extension_models = {}
 
 
@@ -300,7 +302,8 @@ def extension_models() -> dict:
     return {"character_models": [{"key": key, "label": CHARACTER_LABELS[key],
                                   "available": path.is_file() and meta.is_file()}
                                  for key, (path, meta) in CHARACTER_PATHS.items()],
-            "segmenters": {"classical": True, "unet": UNET_MODEL.is_file()}}
+            "segmenters": {"classical": True, "unet": UNET_MODEL.is_file(),
+                           "unet_tight": UNET_MODEL.is_file()}}
 
 
 def get_extension_model(model_key="cnn"):
@@ -328,9 +331,9 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
     if mode is not None and mode != "character":
         raise HTTPException(status_code=400, detail="Only character recognition is available.")
     method = segmenter or os.getenv("HNRS_CHARACTER_SEGMENTER", "classical")
-    if method not in {"classical", "unet"}:
-        raise HTTPException(status_code=400, detail="Choose classical or unet character segmentation.")
-    if method == "unet" and not UNET_MODEL.is_file():
+    if method not in {"classical", "unet", "unet_tight"}:
+        raise HTTPException(status_code=400, detail="Choose classical, unet or unet_tight character segmentation.")
+    if method in {"unet", "unet_tight"} and not UNET_MODEL.is_file():
         raise HTTPException(status_code=503, detail=f"Train the full U-Net first; expected {UNET_MODEL}. The smoke model is not used by the GUI.")
     if segmentation is not None and segmenter is not None:
         raise HTTPException(status_code=400, detail="Choose one character segmentation method.")
@@ -379,7 +382,9 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
         return {"mode": "character", "model": model, "model_label": CHARACTER_LABELS[model],
                 "segmenter": method, "glyph_count": len(glyphs),
                 "segmentation": legacy_key if segmentation is not None else method,
-                "segmentation_label": SEGMENTERS[legacy_key][0] if segmentation is not None else ("U-Net" if method == "unet" else "Classical"),
+                "segmentation_label": SEGMENTERS[legacy_key][0] if segmentation is not None else
+                                      ("U-Net tight crops" if method == "unet_tight" else
+                                       "U-Net" if method == "unet" else "Classical"),
                 "text": "".join(item["before"] + item["character"] for item in predictions),
                 "confidence": sum(item["confidence"] for item in predictions)/len(predictions),
                 "predictions": predictions}

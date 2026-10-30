@@ -19,7 +19,7 @@ from segmentation import crops_to_model_input, segment
 from text_recognition.common import CHAR_MODEL, prepare_character
 from text_recognition.emnist import model_paths
 from text_recognition.refine import refine_split_components
-from text_recognition.layout import segment_text
+from text_recognition.layout import Glyph, segment_text
 from segmentation.unet_resnet import UNET_MODEL
 
 # These paths belong to the original ten-digit classifiers.
@@ -277,6 +277,14 @@ def character_paths(model_key: str):
 
 
 CHARACTER_PATHS = {key: character_paths(key) for key in MODEL_PATHS}
+for key in ("cnn_case_balanced", "cnn_light_aug", "cnn_deep_aug", "mlp_large"):
+    CHARACTER_PATHS[key] = model_paths(key)[1:]
+CHARACTER_PATHS["cnn_overlap"] = (CHAR_MODEL.with_name("emnist_cnn_overlap.keras"), model_paths("cnn")[2])
+CHARACTER_LABELS = {**MODEL_LABELS, "cnn_case_balanced": "Case-balanced CNN (experimental)",
+                    "cnn_light_aug": "CNN with light augmentation (experimental)",
+                    "cnn_deep_aug": "Deeper CNN with augmentation (experimental)",
+                    "mlp_large": "Larger MLP (256 + 128)",
+                    "cnn_overlap": "Overlap fine-tuned CNN (experimental)"}
 _extension_models = {}
 
 
@@ -313,10 +321,21 @@ def get_extension_model(model_key="cnn"):
 
 @app.post("/api/recognise-text")
 async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
-                         mode: str | None = Form(None), segmentation: str | None = Form(None)) -> dict:
+                         mode: str | None = Form(None),
+                         segmenter: str | None = Form(None),
+                         segmentation: str | None = Form(None),
+                         show_crops: bool = Form(False)) -> dict:
     if mode is not None and mode != "character":
         raise HTTPException(status_code=400, detail="Only character recognition is available.")
-    segmenter, segment_options = segmentation_options(segmentation, "characters")
+    method = segmenter or os.getenv("HNRS_CHARACTER_SEGMENTER", "classical")
+    if method not in {"classical", "unet"}:
+        raise HTTPException(status_code=400, detail="Choose classical or unet character segmentation.")
+    if method == "unet" and not UNET_MODEL.is_file():
+        raise HTTPException(status_code=503, detail=f"Train the full U-Net first; expected {UNET_MODEL}. The smoke model is not used by the GUI.")
+    if segmentation is not None and segmenter is not None:
+        raise HTTPException(status_code=400, detail="Choose one character segmentation method.")
+    if segmentation is not None:
+        legacy_key, legacy_options = segmentation_options(segmentation, "characters")
     if file.content_type not in {"image/png", "image/jpeg", "image/bmp", "image/webp"}:
         raise HTTPException(status_code=415, detail="Upload a PNG, JPG, BMP or WebP image.")
     content = await file.read()
@@ -328,30 +347,42 @@ async def recognise_text(file: UploadFile = File(...), model: str = Form("cnn"),
         with Image.open(io.BytesIO(content)) as image:
             image.verify()
         with Image.open(io.BytesIO(content)) as image:
-            details = {}
-            crops = run_segmenter(image, segment_options, details)
-            image_info = [{"filename": file.filename, "width": image.width, "height": image.height, **details}]
-            if not crops:
+            if segmentation is None:
+                glyphs = segment_text(image, method=method)
+            else:
+                # Preserve the digit-style segmentation experiment as an explicit
+                # API option while the GUI uses the text-aware character routes.
+                glyphs = [Glyph(Image.fromarray(crop.image), crop.bbox)
+                          for crop in run_segmenter(image, legacy_options)]
+            if not glyphs:
                 raise ValueError("The image does not contain visible writing.")
             if len(glyphs) > 30:
                 raise ValueError("Draw no more than 30 separated characters in one image.")
-            # Use the full image for one character, or classify separated
-            # crops in left-to-right order for a longer drawing.
-            prepared = [prepare_character(image)] if len(crops) == 1 else [prepare_character(Image.fromarray(c.image)) for c in crops]
-        batch = np.stack(prepared)
-        # Same helpers as the digit route, so the SVM gets flat input and its predict() decision.
-        probabilities = predict_probabilities(classifier, model, batch, num_classes=len(mapping))
+            prepared = [prepare_character(glyph.image) for glyph in glyphs]
+            batch = np.stack(prepared)
+            probabilities = predict_probabilities(classifier, model, batch, num_classes=len(mapping))
+            if segmentation is None and method == "unet" and model not in SKLEARN_MODELS:
+                glyphs, prepared, probabilities = refine_split_components(
+                    image, glyphs, prepared, probabilities, classifier)
+                batch = np.stack(prepared)
         indexes = predicted_digits(classifier, model, batch, probabilities)
         predictions = []
-        for position, (scores, index) in enumerate(zip(probabilities, indexes)):
+        for position, (glyph, scores, index) in enumerate(zip(glyphs, probabilities, indexes)):
             index = int(index)
-            predictions.append({"position": position, "character": mapping[str(index)], "confidence": float(scores[index]),
-                                "image": 0, "bbox": [int(value) for value in crops[position].bbox]})
-        return {"mode": "character", "model": model, "model_label": MODEL_LABELS[model],
-                "segmentation": segmenter, "segmentation_label": SEGMENTERS[segmenter][0],
-                "text": "".join(item["character"] for item in predictions),
+            item = {"position": position, "character": mapping[str(index)],
+                    "confidence": float(scores[index]), "before": glyph.before, "bbox": glyph.bbox}
+            if show_crops:
+                item["crop_preview"] = crop_data_url(glyph.image)
+                item["model_input_preview"] = crop_data_url(
+                    Image.fromarray(np.uint8(np.clip(prepared[position][..., 0], 0, 1) * 255)))
+            predictions.append(item)
+        return {"mode": "character", "model": model, "model_label": CHARACTER_LABELS[model],
+                "segmenter": method, "glyph_count": len(glyphs),
+                "segmentation": legacy_key if segmentation is not None else method,
+                "segmentation_label": SEGMENTERS[legacy_key][0] if segmentation is not None else ("U-Net" if method == "unet" else "Classical"),
+                "text": "".join(item["before"] + item["character"] for item in predictions),
                 "confidence": sum(item["confidence"] for item in predictions)/len(predictions),
-                "images": image_info, "predictions": predictions}
+                "predictions": predictions}
     except HTTPException:
         raise
     except (OSError, ValueError, KeyError) as exc:

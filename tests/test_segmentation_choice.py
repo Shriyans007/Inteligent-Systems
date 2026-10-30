@@ -1,4 +1,4 @@
-"""The chosen segmentation method must reach segment() on both recognition routes."""
+"""Digit methods and the text-aware character route stay independently selectable."""
 
 import io
 import json
@@ -77,6 +77,14 @@ def test_character_route_uses_the_chosen_segmenter(tmp_path, monkeypatch):
     monkeypatch.setattr(api, "CHARACTER_PATHS", {"cnn": (model_file, mapping_file)})
     monkeypatch.setattr(api, "_extension_models", {"cnn": (StubClassifier(62, 11), {"11": "B"})})
     calls = record_segment(monkeypatch)
+    text_methods = []
+    real_text_segment = api.segment_text
+
+    def recording_text(image, method):
+        text_methods.append(method)
+        return real_text_segment(image, method=method)
+
+    monkeypatch.setattr(api, "segment_text", recording_text)
 
     with TestClient(api.app) as client:
         def send(**form):
@@ -85,7 +93,7 @@ def test_character_route_uses_the_chosen_segmenter(tmp_path, monkeypatch):
         default = send()
         chosen = send(segmentation="contours_split")
 
-    assert default.status_code == 200 and default.json()["segmentation"] == "components"
-    assert calls[0] == {"method": "connected_components", "split_touching": False}
+    assert default.status_code == 200 and default.json()["segmenter"] == "classical"
+    assert text_methods == ["classical"]
     assert chosen.status_code == 200 and chosen.json()["text"] == "B"
-    assert calls[1] == {"method": "contours", "split_touching": True}
+    assert calls == [{"method": "contours", "split_touching": True}]

@@ -70,7 +70,7 @@ export default function App() {
   const modelReady = (family === "character" ? characterModels : models)
     .some((item) => item.key === modelKey && item.available);
   // Until the user picks one, each route uses its own default segmentation method.
-  const chosenSegmentation = segmentation || segmenters.defaults[family === "numbers" ? "numbers" : "characters"] || "";
+  const chosenSegmentation = segmentation || segmenters.defaults.numbers || "";
   // Only the digit models report a test accuracy to set the threshold from.
   const selectedAccuracy = family === "numbers" ? models.find((item) => item.key === modelKey)?.accuracy : undefined;
 
@@ -172,7 +172,7 @@ export default function App() {
     } else if (family === "numbers") files.forEach((file) => body.append("files", file));
     else body.append("file", files[0]);
     body.append("model", modelKey);
-    if (chosenSegmentation) body.append("segmentation", chosenSegmentation);
+    if (family === "numbers" && chosenSegmentation) body.append("segmentation", chosenSegmentation);
     // Keep the images that were sent, so the segmentation can be drawn on top of them.
     setSubmitted(source === "draw" ? [canvasRef.current.toDataURL("image/png")] : previews);
     if (family === "character") {
@@ -248,13 +248,14 @@ export default function App() {
               </optgroup>
             </select>
           </label>
-          {segmenters.segmenters.length > 0 && <label className="model-selector" htmlFor="segmentation-choice"><span>Segmentation method</span>
+          {family === "numbers" && segmenters.segmenters.length > 0 && <label className="model-selector" htmlFor="segmentation-choice"><span>Segmentation method</span>
             <select id="segmentation-choice" value={chosenSegmentation} disabled={loading}
               onChange={(event) => { setSegmentation(event.target.value); setResult(null); }}>
               {segmenters.segmenters.map((item) => <option key={item.key} value={item.key} disabled={item.available === false}>
                 {item.label}{item.available === false ? " (not trained)" : ""}
               </option>)}
             </select>
+          </label>}
           {family === "character" && <label className="model-selector" htmlFor="segmenter-choice">
             <span>Character segmentation</span>
             <select id="segmenter-choice" value={segmenter} disabled={loading}
@@ -291,7 +292,6 @@ export default function App() {
                 </span>
               ))}</div>
             </div>
-          ) : <div className="result"><p>Predicted characters · {result.model_label}{result.segmentation_label ? ` · ${result.segmentation_label}` : ""}</p><strong>{result.text || "(no text detected)"}</strong>
           ) : <div className="result"><p>Predicted characters · {result.model_label}</p><strong>{result.text || "(no text detected)"}</strong>
             <p>Segmenter: {result.segmenter === "unet" ? "U-Net (experimental)" : "Classical"} · {result.glyph_count ?? result.predictions?.length} character crops</p>
             <p>Average confidence: {(result.confidence * 100).toFixed(1)}%</p>

@@ -76,3 +76,12 @@ match, edit distance, crop count and API error. The JSON reports whole-word
 accuracy, character error rate and wrong crop counts for both deployed setups.
 An improvement here tests the **combined crop and separately trained CNN**;
 the training JSON alone only measures held-out synthetic crops.
+
+The tight route also uses a conservative, word-independent repair when two
+low-confidence U-Net detections lie in one connected ink component and the
+classifier strongly prefers the complete component as one glyph. Line grouping
+uses vertical stroke overlap, so a short letter next to a capital does not
+become a new line solely because their vertical centres differ. These steps
+do not invent missing characters or guarantee a correct crop count; inspect
+the per-image CSV after changing them. They do not change training crops or
+weights, so the already fine-tuned tight CNN need not be retrained for this step.

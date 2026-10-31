@@ -1,6 +1,7 @@
-"""Basic tests for image_acquisition.py - covers load_number_image() and
+"""Basic tests for image_acquisition.py. They cover load_number_image() and
 build_number_from_digits(), since preprocess_pipeline() already had tests
-but these two didn't have their own yet."""
+but these two didn't have their own yet.
+"""
 
 from PIL import Image
 import pytest

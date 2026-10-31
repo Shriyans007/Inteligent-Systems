@@ -1,6 +1,7 @@
-"""Basic tests for preprocess_pipeline() - checks the grayscale-only,
+"""Basic tests for preprocess_pipeline(). They check that the grayscale-only,
 fixed-threshold and Otsu paths all still work as the preprocessing code
-keeps changing."""
+keeps changing.
+"""
 
 import numpy as np
 import pytest

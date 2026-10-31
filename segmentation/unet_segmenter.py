@@ -1,9 +1,9 @@
-"""Find individual characters in a line of handwriting with the ResNet U-Net.
+"""Find each character in a line of handwriting with the ResNet U-Net.
 
     line image -> normalise scale -> U-Net -> centre peaks -> one box per character
 
-Overlapping characters get separate boxes because each has its own peak. The
-boxes may overlap each other, and crops include a little of the shared ink.
+Overlapping characters still get separate boxes, since each one has its own
+peak. The boxes can overlap, and the crops include a bit of the shared ink.
 The optional overlap fine-tuning uses the same crop width
 (text_recognition/finetune_overlap.py).
 """
@@ -44,14 +44,14 @@ def pad_to_multiple(image, multiple=DIVISOR, vertical_context=8, minimum=32):
 
 
 def decode_peaks(heat, half_width, threshold=0.3, max_overlap=0.62, weak_overlap=0.45, weak_score=0.6):
-    """Turn network output maps into (cx, half_width, score) in model-pixel coordinates.
+    """Turn the network output into (cx, half_width, score) in model pixel coordinates.
 
-    A peak is a local maximum of the column profile. Letters with several humps
-    or stems (m, h, b, d) can produce a second, smaller peak inside the same
-    letter, so a weaker peak is dropped when its predicted box sits mostly
-    inside a stronger peak's box (more than ``max_overlap`` of the narrower box,
-    or more than ``weak_overlap`` if its score is also below ``weak_score``).
-    Genuinely overlapping neighbours overlap less than that and are both kept.
+    A peak is a local maximum of the column profile. Letters with a few humps or
+    stems (m, h, b, d) can give a second, smaller peak inside the same letter, so a
+    weaker peak is dropped when its box sits mostly inside a stronger peak's box
+    (more than ``max_overlap`` of the narrower box, or more than ``weak_overlap`` if
+    its score is also below ``weak_score``). Real overlapping neighbours overlap
+    less than that, so both of them are kept.
     """
     profile = heat.max(axis=0)
     rows = heat.argmax(axis=0)
@@ -85,10 +85,10 @@ def window_bounds(cx, half_width, width, margin=CROP_MARGIN):
 
 
 def window_crop(gray, cx, half_width, margin=CROP_MARGIN):
-    """Crop a character window (with margin) from a gray line image; rows are trimmed to the ink.
+    """Crop a character window (plus margin) from a grey line image, with the rows trimmed to the ink.
 
-    Used by inference and by training-crop generation, so both see identical crops.
-    ``gray`` may be white-on-black or black-on-white; ink is whatever differs from the border.
+    Used for both prediction and making training crops, so that both see the same crops.
+    ``gray`` can be white on black or black on white, since ink is whatever differs from the border.
     """
     h, w = gray.shape[:2]
     x0, x1 = window_bounds(cx, half_width, w, margin)
@@ -105,10 +105,10 @@ def window_crop(gray, cx, half_width, margin=CROP_MARGIN):
 
 
 def remove_disconnected_neighbours(gray, boxes, index):
-    """Hide ink owned solely by another U-Net character centre.
+    """Hide ink that only belongs to another U-Net character centre.
 
-    Ink spanning multiple centres is retained in both crops because connected
-    components cannot reliably separate letters sharing a stroke.
+    Ink that spans more than one centre is kept in both crops, since connected
+    components can't reliably separate letters that share a stroke.
     """
     binary = _binary_for_detection(gray)
     count, labels, stats, _ = cv2.connectedComponentsWithStats(binary, 8)

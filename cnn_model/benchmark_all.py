@@ -1,8 +1,8 @@
 """Run every trained digit model with every segmentation method on the benchmark set.
 
 Each run goes through the real /api/predict route, so segmentation, preprocessing and
-the classifier are all measured together. The tables reuse Person A's
-preprocessing.benchmark_metrics so every result is summarised the same way.
+the model are all tested together. The results are summarised with Person A's
+preprocessing.benchmark_metrics, so that every run is scored the same way.
 
 Run from the repo root (after python -m preprocessing.build_benchmark_set):
   python -m cnn_model.benchmark_all
@@ -51,7 +51,7 @@ def main() -> None:
             summaries[name] = {**summarise(cases[name]), "model": model, "segmentation": method,
                                "seconds": round(seconds, 2)}
 
-    # Errors every model makes with the same segmenter come from that segmenter, not a classifier.
+    # If every model gets the same image wrong with one segmenter, that segmenter is the cause and not a classifier.
     shared = {method: shared_segmentation_errors({name: rows for name, rows in cases.items()
                                                   if summaries[name]["segmentation"] == method})
               for method in methods}

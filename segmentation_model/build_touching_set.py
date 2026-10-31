@@ -1,8 +1,8 @@
 """Build a benchmark of numbers whose digits touch, from MNIST test digits.
 
-Person A's benchmark leaves gaps between digits, so it cannot show whether a
-segmenter can separate touching digits. This set can, and it uses the same
-manifest format, so cnn_model.benchmark_all runs on it unchanged:
+Person A's benchmark leaves gaps between the digits, so it can't show whether a
+segmenter can split touching digits. This set can, and it uses the same manifest
+format, so cnn_model.benchmark_all runs on it without any changes:
 
   python -m segmentation_model.build_touching_set
   python -m cnn_model.benchmark_all --manifest data/touching/manifest.csv --output artifacts/benchmark/touching
@@ -28,14 +28,14 @@ def main() -> None:
 
     from cnn_model.models import _keras
     (_, _), (digits, labels) = _keras().datasets.mnist.load_data()
-    # touching=1.0: every neighbouring pair touches or overlaps.
+    # touching=1.0 means every pair of neighbours touches or overlaps.
     images, _, _, numbers = make_dataset(digits, labels, args.count, args.seed, touching=1.0,
                                          min_digits=2, max_digits=4)
     folder = args.output / "images"
     folder.mkdir(parents=True, exist_ok=True)
     rows = []
     for index, (image, number) in enumerate(zip(images, numbers)):
-        # Dark ink on white, twice the size, with a border: closer to a scanned or drawn image.
+        # Dark ink on white, twice the size and with a border, so it's closer to a scanned or drawn image.
         image = ink_crop(image)
         picture = Image.fromarray(255 - image).resize((image.shape[1] * 2, image.shape[0] * 2),
                                                       Image.Resampling.LANCZOS)

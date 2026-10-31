@@ -1,14 +1,14 @@
-"""Segment handwriting into characters while retaining spaces and line breaks.
+"""Split handwriting into characters while keeping the spaces and line breaks.
 
-Two routes, same output (a list of ``Glyph``):
+There are two routes, and both give the same output (a list of ``Glyph``):
 
-* U-Net route  -- used automatically when trained weights exist at
-  artifacts/text/segmentation/unet_resnet.keras. Finds characters even when
-  they overlap or share strokes (the two t's in "butterfly", an "a" written
+* U-Net route: used automatically when trained weights exist at
+  artifacts/text/segmentation/unet_resnet.keras. It finds characters even when
+  they overlap or share strokes (the two t's in "butterfly", or an "a" written
   over an "e").
-* Classical route -- the original connected-components method. Used when the
-  weights are missing, or if you ask for it with ``method="classical"``. It
-  only works when characters are physically separated.
+* Classical route: the original connected components method. It's used when the
+  weights are missing, or if you ask for it with ``method="classical"``. It only
+  works when the characters are physically separate.
 """
 
 from dataclasses import dataclass
@@ -34,8 +34,8 @@ def _boxes(mask):
 
 
 def _line_groups(boxes):
-    # Group tall strokes by their vertical centres; attach dots to the closest
-    # stroke on the same line instead of treating a dot as another text line.
+    # Group tall strokes by their vertical centres, and attach dots to the closest
+    # stroke on the same line instead of treating a dot as another line of text.
     heights = [h for _, _, _, h in boxes]
     typical = float(np.median(heights))
     groups = []
@@ -52,8 +52,8 @@ def _line_groups(boxes):
 
 
 def _attach_marks(boxes):
-    # An i/j dot has a similar horizontal position to its stem. Merge its
-    # bounding box with that stem without altering the original image pixels.
+    # An i or j dot sits at about the same x position as its stem, so merge its
+    # box with the stem without changing the original image pixels.
     boxes = sorted(boxes, key=lambda b: b[2] * b[3], reverse=True)
     if not boxes:
         return boxes
@@ -78,7 +78,7 @@ _UNET = None
 
 
 def _get_unet():
-    """The trained U-Net segmenter, or None if no weights have been trained yet."""
+    """The trained U-Net segmenter, or None if it hasn't been trained yet."""
     global _UNET
     if _UNET is None:
         from segmentation.unet_resnet import UNET_MODEL
@@ -90,11 +90,11 @@ def _get_unet():
 
 
 def segment_text(image: Image.Image, method: str = "auto") -> list[Glyph]:
-    """Return glyph crops and separators (spaces, line breaks) for handwriting.
+    """Return the glyph crops and separators (spaces and line breaks) for handwriting.
 
     method: "auto" (U-Net if trained weights exist, otherwise classical),
             "unet" (error if the weights are missing) or "classical".
-    Crops contain the original grayscale pixels, so the classifier receives the
+    The crops keep the original grayscale pixels, so the classifier gets the
     untouched handwriting.
     """
     if method not in ("auto", "unet", "classical"):
@@ -113,7 +113,7 @@ def _segment_unet(image: Image.Image, unet) -> list[Glyph]:
     binary = _binary_for_detection(gray)
     if not np.any(binary):
         return []
-    # Close small gaps only to find the text lines; the U-Net then splits each
+    # Close small gaps only to find the text lines. The U-Net then splits each
     # line into characters, including ones that touch or overlap.
     joined = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, np.ones((1, 9), np.uint8))
     boxes = _boxes(joined)
@@ -128,7 +128,7 @@ def _segment_unet(image: Image.Image, unet) -> list[Glyph]:
         line = gray[y0:y1, x0:x1]
         found = unet.find_characters(line)
         crops = unet.crops(line, found)
-        if len(crops) != len(found):          # defensive: never let boxes and crops drift apart
+        if len(crops) != len(found):          # just in case, never let the boxes and crops get out of step
             continue
         median_height = float(np.median([c.h for c in found])) if found else 0.0
         for i, (box, crop) in enumerate(zip(found, crops)):
@@ -143,9 +143,9 @@ def _segment_unet(image: Image.Image, unet) -> list[Glyph]:
 
 
 def _segment_classical(image: Image.Image) -> list[Glyph]:
-    """Original method: clearly separated handwriting only.
+    """The original method, for clearly separated handwriting only.
 
-    Short stroke gaps are closed only for detection.
+    Short gaps in strokes are only closed for detection.
     """
     gray = np.asarray(image.convert("L"))
     binary = _binary_for_detection(gray)

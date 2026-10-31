@@ -38,7 +38,7 @@ def main() -> None:
     args = parse_args()
     x_train, y_train, x_test, y_test = load_mnist(args.train_samples, args.seed)
 
-    # probability=True lets the API return a full 10-class vector, like the Keras models do.
+    # probability=True lets the API return all 10 class probabilities, like the Keras models.
     model = SVC(kernel="rbf", gamma="scale", probability=True, random_state=args.seed)
     started = time.perf_counter()
     model.fit(x_train, y_train)

@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def sample(images: np.ndarray, labels: np.ndarray, size: int, seed: int):
-    """Keep a fixed random subset; 0, or a size larger than the split, keeps everything."""
+    """Keep a fixed random subset. 0, or a size bigger than the split, keeps everything."""
     if not size or size >= len(labels):
         return images, labels
     keep = np.random.default_rng(seed).choice(len(labels), size=size, replace=False)
@@ -62,7 +62,7 @@ def main() -> None:
     check_data(args.data)
     mapping = read_mapping(args.data / FILES["mapping"])
 
-    # load() already turns the raw EMNIST images upright, exactly as for the networks.
+    # load() already turns the raw EMNIST images upright, the same as for the networks.
     train_images, train_labels = load(args.data, "train")
     train_images, train_labels = sample(train_images, train_labels, args.train_samples, args.seed)
     missing = sorted(set(mapping) - set(train_labels.tolist()))

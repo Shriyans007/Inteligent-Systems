@@ -1,8 +1,9 @@
-"""Compare crop strategies on generated lines from EMNIST, per character.
+"""Compare crop strategies, per character, on lines made from EMNIST.
 
-Run on training characters to select a strategy; reserve the EMNIST test
-characters for a final held-out check. The same U-Net detections are reused
-for every strategy. Synthetic-line accuracy is not real-drawing accuracy.
+Run it on the training characters to pick a strategy, and keep the EMNIST test
+characters for the final held-out check. The same U-Net detections are reused
+for every strategy. One thing to note is that accuracy on synthetic lines isn't
+the same as accuracy on real drawings.
 
     python -m text_recognition.evaluate_crop_windows train --repeats 5
     python -m text_recognition.evaluate_crop_windows test --repeats 5

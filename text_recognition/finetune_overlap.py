@@ -1,15 +1,15 @@
-"""Fine-tune the character classifier so it can read overlapped and shared-stroke letters.
+"""Fine-tune the character classifier so that it can read overlapping and shared-stroke letters.
 
-The classifier was trained on clean, isolated EMNIST characters. Crops from
-overlapping handwriting (a "t" whose crossbar is shared with the next "t", an
-"a" written over an "e") contain neighbour ink it has never seen. This script
-continues training the existing model on a 50/50 mix of clean EMNIST and
-synthetic overlap crops, then reports accuracy on both so you can confirm
-clean accuracy has not dropped.
+The classifier was trained on clean, separate EMNIST characters. Crops from
+overlapping handwriting (a "t" sharing its crossbar with the next "t", or an "a"
+written over an "e") have neighbouring ink in them that it's never seen. This
+script keeps training the existing model on a 50/50 mix of clean EMNIST and
+synthetic overlap crops, then reports accuracy on both, so you can check the
+clean accuracy hasn't dropped.
 
     python -m text_recognition.finetune_overlap --data data/emnist/byclass
 
-The original model file is left untouched; the result is saved next to it as
+The original model file isn't touched. The result is saved next to it as
 emnist_cnn_overlap.keras.
 """
 import argparse
@@ -77,7 +77,7 @@ def main():
     if model.optimizer is None:           # saved without training state
         model.compile(optimizer=keras.optimizers.Adam(args.learning_rate),
                       loss="sparse_categorical_crossentropy", metrics=["accuracy"])
-    else:                                 # keep the team's own loss; just lower the learning rate
+    else:                                 # keep the team's own loss, just with a lower learning rate
         model.optimizer.learning_rate = args.learning_rate
     result = {"overlap_accuracy_before": accuracy(model, test_over_x, test_over_y)}
     if clean_test_x is not None:

@@ -1,8 +1,9 @@
 """Synthetic number images with known digit boundaries, for training the cut-point CNN.
 
-MNIST digits are cropped to their ink, resized and placed side by side, sometimes with
-a gap and sometimes touching or overlapping. Because the code places every digit, it
-knows exactly where each boundary is, so no hand-labelling is needed.
+MNIST digits are cropped to their ink, resized and placed side by side, sometimes
+with a gap and sometimes touching or overlapping. Since the code places every
+digit itself, it knows exactly where each boundary is, so nothing has to be
+labelled by hand.
 """
 
 from __future__ import annotations
@@ -47,10 +48,10 @@ def compose(digits, rng: np.random.Generator, touching: float = 0.4):
         piece = resize_to_height(piece, int(rng.integers(18, DIGIT_HEIGHT + 1)))
         h, w = piece.shape
         if right is not None:
-            # A negative gap makes digits touch or overlap: the case the rule-based
-            # segmenter cannot cut, and the main reason to learn where cuts go.
-            # Gaps go up to 30 columns: the first model only saw gaps up to 10, so it never
-            # learned to cut the wider gaps in real images and merged neighbouring digits.
+            # A negative gap makes digits touch or overlap. This is the case the rule-based
+            # segmenter can't cut, and basically the main reason to learn where cuts go.
+            # Gaps go up to 30 columns. The first model only saw gaps up to 10, so it never
+            # learnt to cut the wider gaps in real images and merged neighbouring digits.
             gap = int(rng.integers(-6, 0)) if rng.random() < touching else int(rng.integers(1, 31))
             x = right + gap
             boundaries.append((right + x) / 2)   # middle of the gap, or of the overlap
@@ -68,7 +69,7 @@ def compose(digits, rng: np.random.Generator, touching: float = 0.4):
         centre = int(round(boundary))
         labels[max(0, centre - BAND):centre + BAND + 1] = 1
     for start, end in gaps:
-        # Every empty column between two digits is a correct place to cut, however wide the gap.
+        # Every empty column between two digits is a fine place to cut, however wide the gap is.
         labels[start:end] = 1
     return canvas, labels, boundaries
 

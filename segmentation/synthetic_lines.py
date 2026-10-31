@@ -1,15 +1,15 @@
-"""Synthetic lines of overlapping handwriting for training the character U-Net.
+"""Synthetic lines of overlapping handwriting, for training the character U-Net.
 
-Real handwriting with per-character boxes and heavy overlap barely exists, so
-we build it: take real single-character images (EMNIST), scale each to the
-right size for its case, then paste them into a line, deliberately overlapping
-neighbours (an "a" over an "e", two "t"s sharing one crossbar). Because we know
-exactly where every character went, we get perfect labels for free.
+Real handwriting with a box around every character (and lots of overlap) basically
+doesn't exist, so we make it. Real single characters from EMNIST are scaled to the
+right size for their case and pasted into a line, overlapping on purpose (an "a"
+over an "e", or two "t"s sharing a crossbar). Since we know where every character
+went, the labels come for free.
 
-Sizes follow normal handwriting: capitals, digits and tall lowercase letters
+Sizes follow normal handwriting. Capitals, digits and tall lowercase letters
 (b d h k l f) are full height, most lowercase letters are about half height
-(a c e m n o r s u v w x z), and g j p q y hang below the baseline. That is also
-what lets the case resolver tell "c" from "C" later.
+(a c e m n o r s u v w x z), and g j p q y hang below the baseline. This is also
+what lets the case resolver tell "c" from "C" later on.
 """
 from dataclasses import dataclass
 import cv2
@@ -54,7 +54,7 @@ class GlyphInfo:
     x1: int
     y0: int
     y1: int
-    overlap: float = 0.0   # fraction of the smaller glyph covered by its left neighbour
+    overlap: float = 0.0   # how much of the smaller glyph its left neighbour covers
 
     @property
     def cx(self):
@@ -104,8 +104,8 @@ class StubSource:
     """EMNIST-like characters drawn with an OpenCV font.
 
     Used by the unit tests and for quick checks on machines without the EMNIST
-    files. The look is cleaner than real handwriting, so accuracy measured with
-    this source is only a smoke test, not a real result.
+    files. They look cleaner than real handwriting, so accuracy measured with these
+    is only a smoke test and not a real result.
     """
     FONTS = [cv2.FONT_HERSHEY_SIMPLEX, cv2.FONT_HERSHEY_DUPLEX, cv2.FONT_HERSHEY_COMPLEX,
              cv2.FONT_HERSHEY_TRIPLEX]
@@ -153,7 +153,7 @@ def _prepare_glyph(tile, char, cap_height, rng):
 
 
 def _sample_overlap(rng, left, right):
-    """Fraction of the smaller glyph that the neighbour covers (negative = a gap)."""
+    """How much of the smaller glyph the neighbour covers (negative means a gap)."""
     kind = rng.random()
     if left in "tf" and right in "tf":     # shared crossbar, as in "butterfly"
         return rng.uniform(0.3, 0.55) if kind < 0.7 else rng.uniform(-0.1, 0.3)
@@ -189,8 +189,8 @@ def random_text(rng, available, max_chars=40):
 def render_line(source, text, rng, width=384, cap_height=None, overlap=True):
     """Paste characters into a line. Returns (image float32 HxW, [GlyphInfo]).
 
-    overlap=False leaves a clear gap between every pair of letters (used to measure
-    how the model does on easy, separated writing).
+    overlap=False leaves a clear gap between every pair of letters, which is used
+    to see how the model does on easy, separated writing.
     """
     cap_height = cap_height or rng.uniform(26, 42)
     canvas = np.zeros((LINE_H, width), np.float32)
@@ -226,7 +226,7 @@ def render_line(source, text, rng, width=384, cap_height=None, overlap=True):
 
 
 def augment_line(image, rng):
-    """Stroke thickness, blur and noise so the net is not tuned to one pen."""
+    """Stroke thickness, blur and noise, so that the network isn't tuned to one pen."""
     if rng.random() < 0.35:
         image = cv2.dilate(image, np.ones((2, 2), np.uint8))
     if rng.random() < 0.5:

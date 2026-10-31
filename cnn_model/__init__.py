@@ -1,2 +1,2 @@
-"""CNN and inference components contributed by Shriyans (Person C)."""
+"""CNN training and prediction (Shriyans, Person C)."""
 

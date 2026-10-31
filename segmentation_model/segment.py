@@ -53,9 +53,9 @@ def segment_learned(image, model, threshold: float = 0.5, padding: int = 2,
     """Cut a number image where the model predicts digit boundaries.
 
     Returns the same CharacterCrop objects as segmentation.segment(), so the crops go
-    through exactly the same preprocessing and recognition afterwards. If `details` is
-    a dict, it is filled with the cut positions and the cut probability of each model
-    column, in the original image's x coordinates, so the GUI can draw them.
+    through exactly the same preprocessing and recognition afterwards. If `details` is a
+    dict, it gets filled with the cut positions and the cut probability for each column
+    (in the original image's x coordinates), so that the GUI can draw them.
     """
     gray = _to_grayscale_array(image)
     ink = _binary_for_detection(gray) > 0

@@ -1,9 +1,9 @@
 """Measure the trained cut-point CNN by the pieces it actually produces.
 
-Counting raw cut columns is misleading: a cut in an empty margin, or two cuts in the
-same wide gap, change nothing because empty strips are thrown away. So each test
-image goes through segment_learned(), exactly as in the API, and the number of
-pieces it returns is compared with the number of digits.
+Counting raw cut columns is misleading, because a cut in an empty margin, or two
+cuts in the same wide gap, don't change anything once the empty strips are
+thrown away. So each test image goes through segment_learned(), the same as in
+the API, and the number of pieces is compared with the number of digits.
 
 Run from the repo root (after python -m segmentation_model.train):
   python -m segmentation_model.evaluate

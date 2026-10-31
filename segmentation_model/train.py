@@ -54,8 +54,8 @@ def main() -> None:
     keras = _keras()
     keras.utils.set_random_seed(args.seed)
     (train_digits, train_labels), _ = keras.datasets.mnist.load_data()
-    # Training and validation numbers use different MNIST training digits; the test
-    # numbers use MNIST test digits, which the model never sees during training.
+    # Training and validation numbers use different MNIST training digits. The test
+    # numbers use MNIST test digits, which the model never sees in training.
     cut = int(len(train_digits) * 0.9)
     x_train, y_train, _, _ = make_dataset(train_digits[:cut], train_labels[:cut], args.train, args.seed)
     x_val, y_val, _, _ = make_dataset(train_digits[cut:], train_labels[cut:], args.val, args.seed + 1)

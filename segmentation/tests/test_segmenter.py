@@ -1,11 +1,10 @@
-"""
-Tests for the segmentation module, verified against:
-  - preprocessing.image_acquisition.build_number_from_digits() (real tile-composite format)
-  - preprocessing.prepare_mnist_digit() (real CNN input prep)
+"""Tests for the segmentation module, run against the team's real functions:
+  - preprocessing.image_acquisition.build_number_from_digits() (the joined tile format)
+  - preprocessing.prepare_mnist_digit() (the real CNN input preparation)
 
-These are integration-style tests deliberately built against the team's real
-functions rather than mocks, since the tile-composite pixel format has real
-quirks (see segmenter.py docstring) that a synthetic mock wouldn't catch.
+These use the real functions and not mocks on purpose, since the joined tile
+format has a few quirks (see the segmenter.py docstring) that a fake version
+wouldn't catch.
 """
 
 import sys
@@ -50,8 +49,8 @@ def test_tiles_are_left_to_right_ordered(tmp_path):
 
 
 def test_gaps_between_tiles_are_not_treated_as_characters(tmp_path):
-    # regression test for the inversion-heuristic bug: white gap columns
-    # between tiles must NOT be picked up as their own "characters"
+    # regression test for the inversion bug: the white gap columns between tiles
+    # must not be picked up as their own "characters"
     composite = _build_composite(tmp_path, "123")
     crops = segment(composite)
     assert len(crops) == 3, (
@@ -90,7 +89,7 @@ def test_touching_digit_group_splits_at_narrow_bridge():
     cv2.rectangle(canvas, (15, 15), (44, 65), 0, 5)
     cv2.rectangle(canvas, (55, 15), (84, 65), 0, 5)
     cv2.line(canvas, (43, 40), (56, 40), 0, 2)
-    assert len(segment(canvas)) == 1  # original opt-out behaviour
+    assert len(segment(canvas)) == 1  # original behaviour when splitting is turned off
     crops = segment(canvas, split_touching=True)
     assert len(crops) == 2
     assert crops[0].bbox[0] < crops[1].bbox[0]

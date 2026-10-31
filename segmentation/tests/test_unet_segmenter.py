@@ -1,7 +1,7 @@
 """Tests for the ResNet U-Net character segmenter (no EMNIST files needed).
 
-The training-sanity test runs a few dozen steps on CPU (~15 s). The accuracy
-tests use the saved model if you have trained one; they are skipped otherwise.
+The training check runs a few dozen steps on the CPU (about 15 s). The accuracy
+tests use the saved model if you've trained one, otherwise they're skipped.
 """
 import os
 import sys

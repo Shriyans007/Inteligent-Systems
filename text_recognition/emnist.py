@@ -1,4 +1,4 @@
-"""Train and evaluate the four existing architectures on 62 EMNIST classes."""
+"""Train and evaluate the four model types on the 62 EMNIST classes."""
 import argparse
 import csv
 import gzip
@@ -23,7 +23,7 @@ AUGMENTED = {"cnn_light_aug", "cnn_deep_aug"}
 
 
 def model_paths(name, base=CHAR_MODEL.parent, quick=False):
-    """Retain the existing CNN artifact while isolating each other experiment."""
+    """Keep the original CNN file where it is, and give every other experiment its own folder."""
     output = base if name == "cnn" else base/name
     if quick:
         output = output/"quick"
@@ -37,7 +37,7 @@ def check_data(folder):
 
 
 def read_idx(path):
-    # IDX stores the image shape in big-endian integers before the pixel bytes.
+    # IDX files store the image shape as big-endian integers before the pixel bytes.
     with gzip.open(path, "rb") as file:
         header = file.read(4)
         if len(header) != 4 or header[:2] != b"\0\0" or header[2] != 8:
@@ -59,8 +59,8 @@ def read_mapping(path):
 
 
 def orient(images):
-    # Official EMNIST IDX images need a transpose for upright display.
-    # A 90-degree rotation alone leaves characters mirrored.
+    # The official EMNIST IDX images need a transpose to show upright.
+    # Rotating by 90 degrees on its own leaves the characters mirrored.
     return np.transpose(images, (0, 2, 1)).copy()[..., None]
 
 
@@ -101,7 +101,7 @@ def main():
     parser.add_argument("--quick", action="store_true", help="Use small train/test subsets in a separate output directory")
     args = parser.parse_args()
     if args.action == "compare":
-        # Collect files from finished runs; this command does not retrain models.
+        # This only collects files from finished runs, it doesn't retrain anything.
         rows = []
         for name in BUILDERS:
             folder, _, _ = model_paths(name, args.output)
@@ -146,12 +146,12 @@ def main():
         canvas.save(destination)
         print(f"Open {destination} and confirm the letters are upright before training.")
         return
-    # Fixed permutation; test is never used for callbacks or validation.
+    # Fixed shuffle order. The test set is never used for callbacks or validation.
     order = np.random.default_rng(42).permutation(len(y))
     if args.quick: order = order[:4096]
     cut = int(len(order)*0.9)
     train, validation = order[:cut], order[cut:]
-    # Reuse the MNIST layouts, but build fresh weights with 62 outputs.
+    # Reuse the MNIST layouts, but with fresh weights and 62 outputs.
     if args.model in {"mlp", "mlp_large"}:
         _keras().utils.set_random_seed(42)
     model = compile_model(EXPERIMENTAL_BUILDERS[args.model](62))
@@ -160,13 +160,13 @@ def main():
     keras = _keras()
     weights = None
     if args.model == "cnn_case_balanced":
-        # Mild inverse-frequency weighting gives rare lower-case labels more
-        # influence without replacing the measured four-model comparison.
+        # Mild inverse-frequency weighting gives the rare lowercase labels a bit more
+        # influence, without replacing the measured four-model comparison.
         counts = np.bincount(y[train], minlength=62)
         weights = np.clip(np.sqrt(np.median(counts[counts > 0]) / np.maximum(counts, 1)), 0.5, 4.0).astype(np.float32)
         print("Training a separate weighted CNN; compare its held-out results with the original before selecting it.")
     class Batches(keras.utils.PyDataset):
-        # Convert one batch at a time so the large train set stays as uint8.
+        # Convert one batch at a time, so that the large training set can stay as uint8.
         def __init__(self, indices, augment=False):
             super().__init__()
             self.indices = indices

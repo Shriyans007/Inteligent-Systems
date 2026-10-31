@@ -1,25 +1,21 @@
-"""A small ResNet-encoder U-Net that finds individual characters in a line of text.
+"""A small U-Net with a ResNet encoder that finds each character in a line of text.
 
-Why this exists
----------------
-Connected components and contours can only box ink that is physically
-separate. When two letters share a stroke (the crossbar of "tt" in
-"butterfly") or one letter is written over another (an "a" over an "e"), the
-ink is one blob and no box-cutting rule can reliably split it. This network
-looks at the *shape* of the strokes and marks where each character is, even
-when the ink is shared.
+Connected components and contours can only box ink that is actually separate.
+When two letters share a stroke (the "tt" crossbar in "butterfly") or one letter
+is written over another, the ink is one blob and no box-cutting rule can split
+it reliably. This network looks at the shape of the strokes instead and marks
+where each character is, even when the ink is shared.
 
-Input : (H, W, 1) float32 in [0, 1], white ink on black. H and W are free
-        (fully convolutional) but must be multiples of 16 -- use
-        ``pad_to_multiple`` before calling the model.
+Input:  (H, W, 1) float32 in [0, 1], white ink on black. H and W can be any size
+        but must be multiples of 16, so use pad_to_multiple first.
 Output: (H/2, W/2, 2) in [0, 1]
-          channel 0  character-centre heat-map (a peak at each character)
-          channel 1  half-width of the character at that peak, as a fraction
-                     of LINE_HEIGHT (so the decoder knows how wide a crop to take)
+          channel 0  heat-map of character centres (a peak at each character)
+          channel 1  half-width of the character at that peak, as a fraction of
+                     LINE_HEIGHT (so the decoder knows how wide to crop)
 
-The encoder is a ResNet (residual blocks, 4 stages) and the decoder is a
-U-Net (upsampling plus skip connections). It is deliberately small
-(about 0.4M parameters) so it trains and runs on a CPU.
+The encoder is a ResNet (residual blocks, 4 stages) and the decoder is a U-Net
+(upsampling plus skip connections). It's kept small (about 0.4M parameters) so
+that it trains and runs on a CPU.
 """
 from pathlib import Path
 
@@ -71,7 +67,7 @@ def build_unet_resnet(base=16):
     d2 = _res_block(L.Concatenate()([L.UpSampling2D()(d3), s2]), base * 2)
     d1 = _res_block(L.Concatenate()([L.UpSampling2D()(d2), s1]), base)
 
-    # Start with a low centre probability so training is not swamped by background.
+    # Start with a low centre probability so the background doesn't swamp training.
     heat = L.Conv2D(1, 1, activation="sigmoid",
                     bias_initializer=keras.initializers.Constant(-2.19))(d1)
     width = L.Conv2D(1, 1, activation="sigmoid")(d1)
@@ -79,10 +75,10 @@ def build_unet_resnet(base=16):
 
 
 def centre_loss(y_true, y_pred):
-    """CenterNet-style focal loss on the heat-map plus L1 loss on the width.
+    """CenterNet-style focal loss on the heat-map, plus L1 loss on the width.
 
-    y_true has three channels: target heat-map (Gaussian peaks that reach
-    exactly 1.0 at each character centre), target half-width, and a mask that
+    y_true has three channels: the target heat-map (Gaussian peaks that reach
+    exactly 1.0 at each character centre), the target half-width, and a mask that
     is 1 where the width target is valid (next to each centre).
     """
     ops = _keras().ops
@@ -102,5 +98,5 @@ def centre_loss(y_true, y_pred):
 
 
 def load_unet(path=UNET_MODEL):
-    """Load trained weights for inference (the loss is only needed for training)."""
+    """Load the trained weights for prediction (the loss is only needed for training)."""
     return _keras().models.load_model(Path(path), compile=False)

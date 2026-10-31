@@ -1,4 +1,4 @@
-"""Measure the deployed API on labelled single- and multi-digit image files."""
+"""Test the running API on labelled image files of single digits and whole numbers."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def evaluate_manifest(manifest: Path, output: Path, model: str = "cnn", segmentation: str | None = None):
-    # Call the same API route as React to include segmentation and preprocessing.
+    # Call the same API route as the React GUI, so segmentation and preprocessing are included.
     from fastapi.testclient import TestClient
     from api.main import app
 
@@ -28,13 +28,13 @@ def evaluate_manifest(manifest: Path, output: Path, model: str = "cnn", segmenta
             path = Path(row["image"])
             if not path.is_absolute():
                 path = manifest.parent / path
-            # Labels here can be multi-digit strings, including a leading zero.
+            # Labels can be whole numbers, kept as strings so that leading zeros aren't lost.
             label = row["label"].strip()
             if not label or not label.isdigit():
                 raise ValueError(f"Invalid digit label: {label!r}")
             content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
             with path.open("rb") as handle:
-                # Send the model choice exactly as the React selector does.
+                # Send the model choice the same way the React dropdown does.
                 form = {"model": model, **({"segmentation": segmentation} if segmentation else {})}
                 response = client.post("/api/predict", data=form,
                                        files={"files": (path.name, handle, content_type)})
@@ -44,7 +44,7 @@ def evaluate_manifest(manifest: Path, output: Path, model: str = "cnn", segmenta
                             "correct": predicted == label, "length_match": len(predicted) == len(label)})
     summary = {
         "model": model,
-        # The API reports which method it used, including its default when none was chosen.
+        # The API says which method it used, including its default if none was picked.
         "segmentation": response.json().get("segmentation"),
         "images": len(details),
         "single_digit": sum(len(row["expected"]) == 1 for row in details),

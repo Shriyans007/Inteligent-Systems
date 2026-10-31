@@ -1,4 +1,4 @@
-"""Create repeatable evaluation evidence for a saved Keras classifier."""
+"""Make repeatable evaluation results (per-class report, confusion matrix and wrong predictions) for a saved Keras model."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def main() -> None:
     predicted = probabilities.argmax(axis=1)
     report = classification_report(labels, predicted, output_dict=True, zero_division=0)
     matrix = confusion_matrix(labels, predicted)
-    # Keep the test indexes so a wrong prediction can be traced to its image.
+    # Keep the test indexes so that a wrong prediction can be traced back to its image.
     errors = np.where(predicted != labels)[0]
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output / "classification_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")

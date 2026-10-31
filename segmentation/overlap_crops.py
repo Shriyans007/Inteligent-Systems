@@ -1,11 +1,11 @@
-"""Training crops that look exactly like what the classifier receives at run time.
+"""Training crops that look exactly like what the classifier gets at run time.
 
-At run time the U-Net gives a window per character that is a little wider than
-the character itself, so the crop often contains a sliver of a neighbour or a
-shared crossbar. This module builds such crops from synthetic overlapping lines
-(using the true character positions, with a bit of jitter to mimic the U-Net's
-small errors) and runs them through the team's own ``prepare_character`` so the
-classifier can be fine-tuned on them.
+At run time the U-Net gives each character a window that is a bit wider than
+the character, so the crop often has a sliver of a neighbour or a shared
+crossbar in it. This builds those crops from synthetic overlapping lines (using
+the true character positions plus a bit of jitter, like the U-Net's small
+errors) and runs them through prepare_character, so that the classifier can be
+fine-tuned on them.
 """
 import numpy as np
 from PIL import Image
@@ -16,7 +16,7 @@ from text_recognition.common import prepare_character
 
 
 def overlap_crops(source, char_to_label, n_lines, seed=0, width=384, overlap=True):
-    """Return (x float32 [N,28,28,1], y int64 [N]) of crops from overlapping lines."""
+    """Return crops from overlapping lines as (x float32 [N,28,28,1], y int64 [N])."""
     rng = np.random.default_rng(seed)
     images, labels = [], []
     for _ in range(n_lines):
@@ -24,7 +24,7 @@ def overlap_crops(source, char_to_label, n_lines, seed=0, width=384, overlap=Tru
         canvas, glyphs = render_line(source, text, rng, width, overlap=overlap)
         gray = (augment_line(canvas, rng) * 255).astype(np.uint8)
         for g in glyphs:
-            # The U-Net is accurate to a few pixels; imitate that so training is not too clean.
+            # The U-Net is only off by a few pixels, so copy that and the training crops aren't too clean.
             cx = g.cx + rng.uniform(-0.08, 0.08) * g.w
             half_width = g.w / 2 * rng.uniform(0.85, 1.15)
             crop = window_crop(gray, cx, half_width)

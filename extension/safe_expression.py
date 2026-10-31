@@ -1,4 +1,4 @@
-"""Safely evaluate a recognised arithmetic expression without Python eval()."""
+"""Safely work out a recognised arithmetic expression without using Python's eval()."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ _UNARY = {ast.UAdd: operator.pos, ast.USub: operator.neg}
 
 
 def evaluate_expression(expression: str) -> int | float:
-    """Evaluate digits, parentheses and + - * / operators using a strict AST allowlist."""
+    """Evaluate digits, brackets and + - * / using a strict allowlist of AST nodes."""
     normalised = expression.replace("÷", "/").replace("×", "*").strip()
     if not normalised or len(normalised) > 100:
         raise ValueError("Expression must contain between 1 and 100 characters.")
@@ -19,7 +19,7 @@ def evaluate_expression(expression: str) -> int | float:
     except SyntaxError as exc:
         raise ValueError("The recognised symbols do not form a valid expression.") from exc
 
-    # Only these node types can be evaluated; other Python syntax is rejected.
+    # Only these node types are allowed, anything else is rejected.
     def visit(node):
         if isinstance(node, ast.Expression):
             return visit(node.body)

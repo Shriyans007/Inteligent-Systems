@@ -1,2 +1,2 @@
-"""Approved arithmetic-expression extension components."""
+"""Arithmetic expression extension (our first extension idea)."""
 

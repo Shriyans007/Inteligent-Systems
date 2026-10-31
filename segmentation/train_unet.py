@@ -1,13 +1,13 @@
 """Train and evaluate the character U-Net on synthetic overlapping handwriting.
 
 Real EMNIST characters are pasted into lines (see synthetic_lines.py), so no
-extra dataset is needed beyond the EMNIST files you already use:
+extra dataset is needed on top of the EMNIST files:
 
     python -m segmentation.train_unet train    --data data/emnist/byclass --steps 3000
     python -m segmentation.train_unet evaluate --data data/emnist/byclass
 
-Add --stub to use OpenCV-drawn letters instead of EMNIST (a quick smoke test only).
-Everything is sized for a laptop CPU: about 0.8M parameters, batch 8, 64-pixel lines.
+Add --stub to use letters drawn with OpenCV instead of EMNIST (only a quick smoke test).
+Everything is sized for a laptop CPU: about 0.8M parameters, batch 8 and 64-pixel lines.
 """
 import argparse
 import json
@@ -28,7 +28,7 @@ from segmentation.synthetic_lines import (EmnistSource, StubSource, augment_line
 def load_source(args, split):
     if args.stub:
         return StubSource()
-    # Reuse the team's EMNIST loader so orientation and class mapping match the classifier.
+    # Use the team's EMNIST loader, so that orientation and class mapping match the classifier.
     from text_recognition.emnist import FILES, check_data, load, read_mapping
     check_data(args.data)
     images, labels = load(args.data, split)
@@ -126,7 +126,7 @@ def main():
     if args.action == "train":
         train(load_source(args, "train"), args.steps, args.batch, args.width, args.output,
               seed=args.seed, learning_rate=args.learning_rate, resume=args.resume)
-    # Held-out EMNIST test characters are used for the final numbers.
+    # The final numbers use held-out EMNIST test characters.
     result = evaluate(UNetSegmenter(args.output), load_source(args, "test"), width=args.width)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     results_name = "segmentation_smoke_results.json" if args.stub else "segmentation_results.json"

@@ -22,14 +22,14 @@ def resize_image(image: Image.Image, size: tuple = (28, 28)) -> Image.Image:
 
 
 def binarize_image(image: Image.Image, threshold: int = 128) -> Image.Image:
-    """Apply a fixed threshold: bright pixels become white and dark pixels black."""
+    """Fixed threshold: pixels at the threshold or brighter become white, the rest go black."""
     array = np.array(image)
     binary = np.where(array >= threshold, 255, 0).astype(np.uint8)
     return Image.fromarray(binary)
 
 
 def binarize_image_otsu(image: Image.Image) -> Image.Image:
-    """Apply Otsu thresholding, which selects a threshold for each image."""
+    """Otsu's method, which picks its own threshold for each image."""
     from skimage.filters import threshold_otsu
 
     array = np.array(image)
@@ -50,7 +50,7 @@ def preprocess_pipeline(
     method: str = "fixed",
     threshold: int = 128,
 ) -> np.ndarray:
-    """Run grayscale, resize, optional binarisation and normalisation."""
+    """Grayscale, resize, optional binarisation and then scale to 0-1."""
     processed = grayscale_image(image)
     processed = resize_image(processed, size)
     if binarize:
@@ -64,16 +64,15 @@ def preprocess_pipeline(
 def centre_digit_by_mass(image: Image.Image) -> Image.Image:
     """Move the digit's weighted centre to the middle of a 28x28 image.
 
-    MNIST digits are centred using the ink in the image. This is more reliable
-    than centring only the bounding box, especially for digits such as 9 that
-    can have a long, thin tail.
+    MNIST centres its digits by the ink and not the bounding box. This works
+    better for digits like 9 that have a long, thin tail.
     """
     pixels = np.asarray(image, dtype=np.float32)
     total_ink = float(pixels.sum())
     if total_ink == 0:
         return image
 
-    # Give darker strokes more weight when finding the centre of the digit.
+    # Darker strokes count more when finding the centre of the digit.
     y_positions, x_positions = np.indices(pixels.shape)
     centre_x = float((x_positions * pixels).sum() / total_ink)
     centre_y = float((y_positions * pixels).sum() / total_ink)
@@ -86,20 +85,18 @@ def centre_digit_by_mass(image: Image.Image) -> Image.Image:
 
 
 def prepare_mnist_digit(source: str | Image.Image) -> np.ndarray:
-    """Prepare an uploaded or segmented digit for the trained CNN.
+    """Prepare an uploaded or segmented digit for the trained models.
 
-    This deployment wrapper first crops and centres the visible digit. It then
-    calls the team's selected preprocessing pipeline using grayscale values,
-    because the preprocessing experiment found this worked better than the
-    fixed and Otsu thresholding options.
+    This crops and centres the digit first, and then runs our preprocessing
+    pipeline with grayscale only, since the preprocessing comparison found that
+    worked better than the fixed and Otsu thresholds.
     """
     image = load_image(source) if isinstance(source, str) else source.copy()
     grayscale = grayscale_image(image)
     pixels = np.asarray(grayscale, dtype=np.uint8)
 
-    # Inspect the border rather than the whole crop: a thick handwritten 9
-    # can occupy most of a tight crop and make its average look dark even
-    # when the page behind it is white.
+    # Check the border and not the whole crop. A thick handwritten 9 can fill most
+    # of a tight crop and make it look dark on average, even on white paper.
     border = np.concatenate((pixels[0], pixels[-1], pixels[:, 0], pixels[:, -1]))
     if float(np.median(border)) > 127:
         pixels = 255 - pixels

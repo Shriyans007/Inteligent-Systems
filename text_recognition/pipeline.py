@@ -1,4 +1,4 @@
-"""Read a handwritten image: segment -> classify -> fix upper/lowercase -> text.
+"""Read a handwritten image: segment, classify, fix upper/lowercase, then join into text.
 
     from text_recognition.pipeline import recognise_text
     result = recognise_text(pil_image)
@@ -21,7 +21,7 @@ _CACHE = {}
 
 
 def load_character_model(prefer_overlap=True):
-    """(model, {label: character}) -- cached after the first call."""
+    """(model, {label: character}), cached after the first call."""
     path = CHAR_MODEL_OVERLAP if prefer_overlap and CHAR_MODEL_OVERLAP.is_file() else CHAR_MODEL
     if path not in _CACHE:
         from segmentation.unet_resnet import _keras
@@ -50,7 +50,7 @@ def recognise_text(image, method="auto", model=None, mapping=None):
     probabilities = model.predict(np.stack(tensors), verbose=0)
     chars = [mapping[int(i)] for i in probabilities.argmax(axis=1)]
 
-    # Letters such as c/C, o/O, s/S look identical once resized; use their size on the line.
+    # Letters like c/C, o/O and s/S look the same once resized, so use their size on the line.
     line_ids = np.cumsum([g.before == "\n" for g in kept]).tolist()
     chars = resolve_case(chars, [g.bbox for g in kept], line_ids)
 

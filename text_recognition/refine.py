@@ -1,10 +1,10 @@
-"""Conservatively repair a character split across two U-Net crops.
+"""Carefully fix a character that got split across two U-Net crops.
 
-The EMNIST classifier can sometimes see a complete character in a connected
-component even when the segmenter places two centres inside it. A merge is
-accepted only when the complete component is narrow enough to be one glyph
-and the selected classifier strongly prefers it to *both* original crops.
-The rule uses no word list or character-specific substitutions.
+The EMNIST classifier can sometimes see a whole character in a connected
+component even when the segmenter put two centres inside it. A merge is only
+accepted when the whole component is narrow enough to be one glyph and the
+selected classifier clearly prefers it to both of the original crops. The rule
+doesn't use a word list or any character-specific fixes.
 """
 
 import cv2
@@ -17,7 +17,7 @@ from text_recognition.layout import Glyph
 
 
 def refine_split_components(image, glyphs, prepared, probabilities, classifier):
-    """Return (glyphs, tensors, scores), merging only well-supported false splits."""
+    """Return (glyphs, tensors, scores), only merging false splits that are well supported."""
     if len(glyphs) < 2:
         return glyphs, prepared, probabilities
 

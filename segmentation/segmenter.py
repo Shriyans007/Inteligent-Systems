@@ -1,14 +1,12 @@
-"""
-segmentation/segmenter.py
+"""segmentation/segmenter.py
 
-Person B's segmentation component for the HNRS pipeline:
+Person B's segmentation step in the HNRS pipeline:
 
     image_acquisition.build_number_from_digits()  ->  [SEGMENTATION]  ->  cnn_model
-    (or a single uploaded photo of handwriting)         (this module)      (per-digit prediction)
+    (or one uploaded photo of handwriting)              (this module)      (one prediction per digit)
 
-Verified against the repo
-Verified with a real image built via the team's own build_number_from_digits()
--- see tests/test_segmenter.py.
+Tested on real images made with build_number_from_digits(), see
+tests/test_segmenter.py.
 """
 
 from dataclasses import dataclass
@@ -20,10 +18,11 @@ from PIL import Image
 
 @dataclass
 class CharacterCrop:
-    """A single segmented character. `image` is the RAW (non-binarized)
-    crop from the original image -- deliberately unprocessed, so
-    preprocessing.prepare_mnist_digit() has full pixel information
-    to work with, same as it would for a directly-uploaded single digit."""
+    """One segmented character. `image` is the raw (not binarised) crop from the
+    original image. It's left unprocessed on purpose, so that
+    preprocessing.prepare_mnist_digit() gets the full pixel information, the same
+    as it would for a single uploaded digit.
+    """
     image: np.ndarray                 # raw grayscale crop, 0-255
     bbox: Tuple[int, int, int, int]   # (x, y, w, h) in the original image
     index: int                        # left-to-right order
@@ -41,27 +40,26 @@ def _to_grayscale_array(image) -> np.ndarray:
 
 
 def _binary_for_detection(gray: np.ndarray) -> np.ndarray:
-    """
-    Binarize purely for FINDING character regions -- never used as the
-    returned crop itself.
+    """Binarise only to find where the characters are. This is never used as the
+    returned crop.
 
-    Detect the canvas background from its border. Photos and tile composites
-    have a light outer border, whereas MNIST-style single digits can have a
-    dark outer border and bright strokes. Tiled inputs can have dark pixels
-    along most of the outer edge; full-height light gaps reveal their canvas.
-    The whole-image mean is unsuitable because dark tiles can cover most of it.
+    The background is worked out from the border. Photos and joined tiles have a
+    light border, but MNIST-style single digits can have a dark border with bright
+    strokes. Joined tiles can have dark pixels along most of the edge, so the
+    full-height light gaps between them are used to find the canvas instead. The
+    mean of the whole image doesn't work, since dark tiles can cover most of it.
     """
     border = np.concatenate((gray[0], gray[-1], gray[:, 0], gray[:, -1]))
-    # Composite tiles can cover the top and bottom edges, but their full-
-    # height white gap columns reveal the light canvas between tiles.
+    # Joined tiles can cover the top and bottom edges, but the full-height
+    # white gaps between them show the light canvas.
     light_gaps = gray.shape[1] > gray.shape[0] and np.any(np.min(gray, axis=0) > 230)
     dark_background = np.median(border) < 128 and not light_gaps
     foreground = cv2.THRESH_BINARY if dark_background else cv2.THRESH_BINARY_INV
     try:
         _, binary = cv2.threshold(gray, 0, 255, foreground + cv2.THRESH_OTSU)
     except cv2.error:
-        # OpenCV sometimes fails here on Windows. The NumPy path still finds
-        # the ink using Otsu's threshold.
+        # OpenCV sometimes fails here on Windows, so the NumPy version still finds
+        # the ink with Otsu's threshold.
         histogram = np.bincount(gray.ravel(), minlength=256).astype(np.float64)
         counts = np.cumsum(histogram)
         weighted = np.cumsum(histogram * np.arange(256))
@@ -131,24 +129,24 @@ def segment_contours(binary_image: np.ndarray, min_area: int = 20):
         return boxes
     hierarchy = hierarchy[0]
     for i, contour in enumerate(contours):
-        if hierarchy[i][3] != -1:  # skip holes (e.g. the digit stroke inside a tile)
+        if hierarchy[i][3] != -1:  # skip holes, like the digit stroke inside a tile
             continue
         boxes.append(cv2.boundingRect(contour))
     return boxes
 
 
 def _split_touching_box(binary: np.ndarray, box: Tuple[int, int, int, int]):
-    """Split a wide connected digit group only at a narrow ink bridge.
+    """Split a wide joined group of digits, but only at a narrow ink bridge.
 
-    A single wide stroke or loop must stay intact, so require a wide bounding
-    box and substantial ink on either side of the proposed cut. This is only
-    used for the number route; it cannot resolve every pair of touching digits.
+    A single wide stroke or loop has to stay in one piece, so this needs a wide
+    box and plenty of ink on both sides of the cut. It's only used for the number
+    route, and it can't split every pair of touching digits.
     """
     x, y, w, h = box
     if w < 20 or w < 1.25 * h:
         return [box]
     ink = binary[y:y+h, x:x+w] > 0
-    # A narrow column near the middle can be the join between two digits.
+    # A narrow column near the middle could be where two digits join.
     projection = ink.sum(axis=0)
     left_limit = max(1, int(w * 0.26))
     right_limit = min(w - 1, int(w * 0.74))
@@ -159,7 +157,7 @@ def _split_touching_box(binary: np.ndarray, box: Tuple[int, int, int, int]):
         return [box]
     left = ink[:, :cut]
     right = ink[:, cut:]
-    # Avoid turning a long tail or stray mark into a separate digit.
+    # Don't turn a long tail or a stray mark into its own digit.
     if left.sum() < 0.18 * ink.sum() or right.sum() < 0.18 * ink.sum():
         return [box]
     pieces = []
@@ -179,14 +177,12 @@ def segment(
     padding: int = 2,
     split_touching: bool = False,
 ) -> List[CharacterCrop]:
-    """
-    Main entry point. `image` can be a file path, PIL Image, or numpy array
-    -- either a composite "number" image from build_number_from_digits(), or
-    a single photo containing multiple handwritten characters.
+    """Main entry point. `image` can be a file path, PIL Image or numpy array. It's
+    either a joined "number" image from build_number_from_digits(), or a photo
+    with several handwritten characters in it.
 
-    Returns ordered (left-to-right) CharacterCrop objects with RAW pixel
-    data, ready to be passed straight into
-    preprocessing.prepare_mnist_digit().
+    Returns CharacterCrop objects in left to right order, with the raw pixels, so
+    that they can go straight into preprocessing.prepare_mnist_digit().
     """
     gray = _to_grayscale_array(image)
     binary = _binary_for_detection(gray)
@@ -213,7 +209,7 @@ def segment(
     for idx, (x, y, w, h) in enumerate(boxes):
         left_padding = right_padding = padding
         if split_touching:
-            # Close crops must not include strokes from their neighbours.
+            # Crops that are close together shouldn't pick up strokes from their neighbours.
             if idx:
                 prev_x, _, prev_w, _ = boxes[idx-1]
                 left_padding = min(padding, max(0, (x - prev_x - prev_w)//2))
@@ -222,16 +218,15 @@ def segment(
                 right_padding = min(padding, max(0, (next_x - x - w)//2))
         x0, y0 = max(0, x - left_padding), max(0, y - padding)
         x1, y1 = min(w_img, x + w + right_padding), min(h_img, y + h + padding)
-        crop = gray[y0:y1, x0:x1]  # <-- raw grayscale, NOT the binary mask
+        crop = gray[y0:y1, x0:x1]  # raw grayscale, not the binary mask
         crops.append(CharacterCrop(image=crop, bbox=(x, y, w, h), index=idx))
     return crops
 
 
 def crops_to_model_input(crops: List[CharacterCrop]) -> List[np.ndarray]:
-    """
-    Convert each raw crop to the (1,28,28,1) float32 tensor the CNN expects.
-    This uses the shared preprocessing module so the full system has only one
-    implementation of the image preparation logic.
+    """Turn each raw crop into the (1,28,28,1) float32 tensor the CNN expects.
+    It uses the shared preprocessing module, so the whole system prepares
+    images in one place.
     """
     from preprocessing import prepare_mnist_digit
 

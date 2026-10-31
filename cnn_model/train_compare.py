@@ -1,4 +1,4 @@
-"""Train and compare a dense baseline and CNN on the same MNIST split."""
+"""Train and compare a dense baseline (MLP) and the CNN on the same MNIST split."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_mnist(quick: bool, seed: int):
-    """Use the same ordered MNIST split and scaling for all four classifiers."""
+    """Load MNIST with the same order and scaling for every model."""
     keras = _keras()
     random.seed(seed)
     np.random.seed(seed)
@@ -35,7 +35,7 @@ def load_mnist(quick: bool, seed: int):
     except AttributeError:
         pass
 
-    # The quick run uses fewer images from each original MNIST split.
+    # The quick run just uses fewer images from each MNIST split.
     (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
     if quick:
         x_train, y_train = x_train[:10000], y_train[:10000]
@@ -46,11 +46,11 @@ def load_mnist(quick: bool, seed: int):
 
 
 def train_one(name, builder, data, args):
-    """Train and evaluate with the existing split, optimizer and callbacks."""
+    """Train and evaluate with the same split, optimiser and callbacks."""
     keras = _keras()
     x_train, y_train, x_test, y_test = data
     model = compile_model(builder())
-    # Stop when validation loss stalls, then return to the best saved weights.
+    # Stop once validation loss stops improving, then go back to the best weights.
     callbacks = [
         keras.callbacks.EarlyStopping(monitor="val_loss", patience=2, restore_best_weights=True),
         keras.callbacks.ReduceLROnPlateau(monitor="val_loss", patience=1, factor=0.5),
@@ -62,7 +62,7 @@ def train_one(name, builder, data, args):
     )
     loss, accuracy = model.evaluate(x_test, y_test, verbose=0)
     elapsed = time.perf_counter() - started
-    # The per-digit figures show which classes the overall accuracy hides.
+    # Per-digit accuracy shows which digits the overall number hides.
     predictions = model.predict(x_test, verbose=0).argmax(axis=1)
     per_class = {
         str(digit): float((predictions[y_test == digit] == digit).mean())
@@ -82,7 +82,7 @@ def main() -> None:
     data = load_mnist(args.quick, args.seed)
     args.output.mkdir(parents=True, exist_ok=True)
 
-    # Both baselines use the same loaded data and training settings.
+    # Both models use the same data and training settings, so the comparison is fair.
     results = []
     for name, builder in (("MLP baseline", build_mlp), ("CNN selected", build_cnn)):
         model, history, record = train_one(name, builder, data, args)

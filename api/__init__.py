@@ -1,2 +1,2 @@
-"""HTTP API connecting the React interface to the trained CNN."""
+"""API that connects the React GUI to the trained models."""
 

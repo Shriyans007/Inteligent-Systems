@@ -3,8 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const allowedTypes = ["image/png", "image/jpeg", "image/bmp", "image/webp"];
 const fallbackModels = [{ key: "cnn", label: "Shallow CNN", available: false }];
 
-// Draws where the segmenter cut each image: a box and label for every piece and, for the
-// learned segmenter, its cut lines and its probability of a cut along the image.
+// Draws where the segmenter cut each image: a box and label for every piece, and for the
+// learned segmenter, its cut lines and how likely a cut is along the image.
 function SegmentView({ result, urls }) {
   return (
     <section className="segment-view" aria-label="How the image was segmented">
@@ -84,7 +84,7 @@ export default function App() {
         setModels(digit.models);
         setCharacterModels(characters);
         setUnetReady(Boolean(text.segmenters?.unet));
-        // Use a 62-class model when available, so the drawing can contain letters and digits.
+        // Use a 62-class model if there is one, so that the drawing can have letters and digits.
         const firstCharacter = characters.find((item) => item.key === "cnn" && item.available)
           ?? characters.find((item) => item.available);
         const firstDigit = digit.models.find((item) => item.key === digit.default_model && item.available)
@@ -96,13 +96,13 @@ export default function App() {
       .catch(() => { setModelsLoaded(true); setError("Could not check the available models. Is the backend running?"); });
   }, []);
   useEffect(() => {
-    // Older backends have no segmentation choice, so a failure just hides the selector.
+    // Older backends don't have a segmentation choice, so if this fails the dropdown is just hidden.
     fetch("/api/segmenters").then((response) => (response.ok ? response.json() : null))
       .then((data) => { if (data) setSegmenters(data); }).catch(() => {});
   }, []);
   useEffect(() => () => previews.forEach(URL.revokeObjectURL), [previews]);
-  // Test accuracy is measured across a dataset; it is not a confidence cutoff
-  // for an individual drawing. Keep the user's warning setting independent.
+  // Test accuracy is measured over a whole dataset, so it isn't a confidence cutoff
+  // for one drawing. The user's warning setting is kept separate.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -173,7 +173,7 @@ export default function App() {
     else body.append("file", files[0]);
     body.append("model", modelKey);
     if (family === "numbers" && chosenSegmentation) body.append("segmentation", chosenSegmentation);
-    // Keep the images that were sent, so the segmentation can be drawn on top of them.
+    // Keep the images that were sent, so that the segmentation can be drawn on top of them.
     setSubmitted(source === "draw" ? [canvasRef.current.toDataURL("image/png")] : previews);
     if (family === "character") {
       body.append("segmenter", activeSegmenter);

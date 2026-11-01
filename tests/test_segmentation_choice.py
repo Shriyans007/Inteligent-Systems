@@ -1,4 +1,4 @@
-"""Digit methods and the text-aware character route stay independently selectable."""
+"""Checks that the digit segmentation methods and the character route can each be picked on their own."""
 
 import io
 import json

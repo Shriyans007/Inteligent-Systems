@@ -1,4 +1,4 @@
-"""Exercise the real upload/segmentation route with a stub classifier."""
+"""Run the real upload and segmentation route with a stub classifier."""
 
 import csv
 

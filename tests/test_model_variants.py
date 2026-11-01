@@ -1,4 +1,4 @@
-"""Check that the two new classifiers can be saved for the API input contract."""
+"""Check that the two new models can be saved in the format the API expects."""
 
 import numpy as np
 import pytest
@@ -14,8 +14,8 @@ def test_new_models_build_predict_and_reload(tmp_path):
         assert model.output_shape == (None, 10)
         if name == "resnet":
             assert sum(isinstance(layer, keras.layers.Add) for layer in model.layers) == 4
-        # One synthetic batch verifies the compiled training path; it is not
-        # an accuracy experiment and produces no reportable model result.
+        # One made-up batch checks that the compiled training works. It's not an
+        # accuracy test and doesn't give a result for the report.
         model.train_on_batch(np.zeros((2, 28, 28, 1), dtype=np.float32),
                              np.array([0, 1]))
         path = tmp_path / f"{name}.keras"

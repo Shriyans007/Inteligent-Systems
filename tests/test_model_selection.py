@@ -1,4 +1,4 @@
-"""Model choice must map to trained local files and identify its prediction."""
+"""The chosen model has to map to a trained local file, and the prediction says which model made it."""
 
 import io
 
@@ -20,7 +20,7 @@ class StubClassifier:
 
 
 def test_selects_requested_model_and_rejects_missing_or_unknown(tmp_path, monkeypatch):
-    # Stub predictions show whether the API used the model selected in the request.
+    # Stub predictions show whether the API used the model picked in the request.
     paths = {key: tmp_path / f"{key}.keras" for key in api.MODEL_PATHS}
     paths["cnn"].touch()
     paths["resnet"].touch()

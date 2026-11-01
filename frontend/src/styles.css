@@ -97,7 +97,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   font-weight: 700;
 }
 
-/* The digit-chip rule also matches the bar spans; reset it for them */
+/* The digit-chip rule also matches the bar spans, so reset it for them */
 .prob-bars .prob-label,
 .prob-bars .prob-bar {
   padding: 0;

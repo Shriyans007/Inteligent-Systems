@@ -1,4 +1,4 @@
-"""Small handwriting shifts for training only; input and output are 0..1."""
+"""Small handwriting-like shifts, for training only. Input and output are 0-1."""
 
 import numpy as np
 from PIL import Image

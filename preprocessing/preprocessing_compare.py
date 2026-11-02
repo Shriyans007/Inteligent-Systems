@@ -11,8 +11,8 @@ from sklearn.metrics import accuracy_score
 
 from preprocessing import preprocess_pipeline
 
-# next to this file, so it saves in the same place whether it's run from the
-# repo root or from inside preprocessing/
+# Save the results next to this file, so they end up in the same place whether
+# it's run from the repo root or from inside preprocessing/.
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 VARIANTS = [
     {"name": "Grayscale only", "binarize": False, "method": None},

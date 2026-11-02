@@ -6,7 +6,7 @@ from cnn_model.models import _keras
 
 from .data import HEIGHT
 
-POSITIVE_WEIGHT = 4.0    # cut columns are now about 11% of all columns (because of the wide gaps), so the boost is smaller
+POSITIVE_WEIGHT = 4.0    # cut columns are about 11% of all columns (because of the wide gaps), so a missed cut only counts 4 times as much
 
 
 def build_cutpoint_model():

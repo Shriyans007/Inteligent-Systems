@@ -28,7 +28,7 @@ DIVISOR = 16         # H and W must be multiples of this
 def _keras():
     try:
         import keras
-    except ImportError:  # very old TensorFlow
+    except ImportError:  # older TensorFlow versions don't have the separate keras package
         from tensorflow import keras
     return keras
 

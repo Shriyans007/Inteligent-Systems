@@ -22,13 +22,13 @@ import re
 from collections import Counter
 from pathlib import Path
 
-# the same image types the API accepts
+# The same image types the API accepts.
 IMAGE_TYPES = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 LABEL_PATTERN = re.compile(r"^(\d+)(?:_.*)?$")
 
 
 def label_from_name(path: Path) -> str | None:
-    # kept as a string so leading zeros like 007 aren't lost
+    # Kept as a string so leading zeros like 007 aren't lost.
     match = LABEL_PATTERN.match(Path(path).stem)
     return match.group(1) if match else None
 
@@ -52,7 +52,7 @@ def build_photo_manifest(folder, output=None):
         if label is None:
             skipped.append((path.name, "name doesn't start with the number"))
             continue
-        # evaluate_uploads reads image paths relative to the manifest's folder
+        # evaluate_uploads reads image paths relative to the manifest's folder.
         relative = Path(os.path.relpath(path, output.parent)).as_posix()
         rows.append({"image": relative, "label": label})
 

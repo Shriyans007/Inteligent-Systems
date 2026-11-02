@@ -62,7 +62,7 @@ def train_one(name, builder, data, args):
     )
     loss, accuracy = model.evaluate(x_test, y_test, verbose=0)
     elapsed = time.perf_counter() - started
-    # Per-digit accuracy shows which digits the overall number hides.
+    # Accuracy for each digit shows which digits are weak, which the overall accuracy can hide.
     predictions = model.predict(x_test, verbose=0).argmax(axis=1)
     per_class = {
         str(digit): float((predictions[y_test == digit] == digit).mean())

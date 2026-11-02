@@ -45,7 +45,7 @@ def test_generator_really_produces_overlapping_letters():
     rng = np.random.default_rng(1)
     overlaps = [g.overlap for _ in range(20)
                 for g in render_line(StubSource(), "butterfly bottle", rng)[1]]
-    assert max(overlaps) > 0.3             # shared strokes occur
+    assert max(overlaps) > 0.3             # some letters really do share strokes
     assert sum(o > 0.05 for o in overlaps) > 40
 
 

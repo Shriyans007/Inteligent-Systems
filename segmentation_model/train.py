@@ -78,7 +78,7 @@ def main() -> None:
         "parameters": int(model.count_params()),
         "train_images": args.train,
         "seed": args.seed,
-        # Judged by the pieces segment_learned() actually returns, as in the API.
+        # The model is judged by the pieces segment_learned() actually returns, the same as in the API.
         **{f"test_{name}": piece_counts(model, data[0], data[3])
            for name, data in test_sets(args.seed, args.test).items()},
         "model_path": str(model_path),

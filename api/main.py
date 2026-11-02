@@ -145,7 +145,7 @@ def run_segmenter(image, options: dict, details: dict | None = None):
         _segmenter_models["cutpoint"] = _keras().models.load_model(SEGMENTER_MODEL_PATH, compile=False)
     from segmentation_model.segment import segment_learned
     return segment_learned(image, _segmenter_models["cutpoint"], details=details)
-# Each route keeps the segmentation it used before the dropdown was added.
+# By default, each route uses the same segmentation it used before the dropdown was added.
 DEFAULT_SEGMENTATION = {"numbers": "components_split", "characters": "components"}
 
 
@@ -222,8 +222,8 @@ async def predict(files: list[UploadFile] = File(...), model: str = Form(DEFAULT
                 filenames.extend(f"{upload.filename} #{crop.index + 1}" for crop in crops)
                 boxes.extend((len(image_info) - 1, crop.bbox) for crop in crops)
             else:
-                # Some MNIST-style images have a dark background over the whole image, so
-                # segmentation can correctly find no separate region. The whole image is used instead.
+                # Some MNIST-style images are a white digit on a black background, so segmentation
+                # finds no separate dark region in them. In that case the whole image is read as one digit.
                 prepared_images.append(prepare_mnist_digit(image))
                 filenames.append(upload.filename)
                 boxes.append((len(image_info) - 1, (0, 0, image.width, image.height)))

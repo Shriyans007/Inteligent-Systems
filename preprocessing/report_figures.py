@@ -37,7 +37,7 @@ def _font(size: int = 14):
     try:
         return ImageFont.load_default(size=size)
     except TypeError:
-        # older Pillow only has the small fixed-size font
+        # Older Pillow versions only have the small fixed-size font.
         return ImageFont.load_default()
 
 
@@ -49,7 +49,7 @@ def _digit_paths(folder: Path, count: int) -> list:
 
 
 def _to_image(array: np.ndarray, scale: int) -> Image.Image:
-    # nearest neighbour so each of the 28x28 pixels stays a clear square
+    # Nearest neighbour scaling, so each of the 28x28 pixels stays a clear square.
     image = Image.fromarray((array * 255).astype(np.uint8))
     return image.resize((image.width * scale, image.height * scale), Image.NEAREST)
 
@@ -82,7 +82,7 @@ def preprocessing_steps_figure(folder, output, count: int = 4, scale: int = 5) -
 def acquisition_figure(folder, output, count: int = 4, height: int = 56, spacing: int = 8) -> Path:
     paths = _digit_paths(folder, count)
     with tempfile.TemporaryDirectory() as tmp:
-        # copy just the chosen digits so the joined number matches the top row
+        # Copy just the chosen digits so the joined number matches the top row.
         for i, path in enumerate(paths):
             shutil.copy(path, Path(tmp) / f"digit_{i:02d}{path.suffix.lower()}")
         number = build_number_from_digits(tmp, height=height, spacing=spacing)

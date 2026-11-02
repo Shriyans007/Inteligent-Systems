@@ -80,7 +80,7 @@ def segment_learned(image, model, threshold: float = 0.5, padding: int = 2,
     for start, end in zip(edges[:-1], edges[1:]):
         part = ink[:, start:end]
         if end <= start or part.sum() < min_ink * total_ink:
-            continue   # an empty strip or a sliver of a neighbour, not a digit
+            continue   # skip empty strips and slivers of a neighbour, since they aren't digits
         rows, cols = np.where(part)
         y0, y1 = rows.min(), rows.max() + 1
         x0, x1 = start + cols.min(), start + cols.max() + 1

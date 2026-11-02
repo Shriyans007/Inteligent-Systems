@@ -24,7 +24,8 @@ def overlap_crops(source, char_to_label, n_lines, seed=0, width=384, overlap=Tru
         canvas, glyphs = render_line(source, text, rng, width, overlap=overlap)
         gray = (augment_line(canvas, rng) * 255).astype(np.uint8)
         for g in glyphs:
-            # The U-Net is only off by a few pixels, so copy that and the training crops aren't too clean.
+            # The U-Net's windows are usually a few pixels off, so the true positions get a
+            # small random shift too. That way the training crops aren't cleaner than real ones.
             cx = g.cx + rng.uniform(-0.08, 0.08) * g.w
             half_width = g.w / 2 * rng.uniform(0.85, 1.15)
             crop = window_crop(gray, cx, half_width)

@@ -38,7 +38,7 @@ def _thumbnail(path: Path) -> Image.Image:
     try:
         image = Image.open(path).convert("L")
     except OSError:
-        # still show the case even if the image has been moved or deleted
+        # Still show the case even if the image has been moved or deleted.
         return Image.new("L", (IMAGE_HEIGHT, IMAGE_HEIGHT), color=200)
     ratio = IMAGE_HEIGHT / image.height
     size = (max(1, min(CELL_WIDTH - 16, round(image.width * ratio))), IMAGE_HEIGHT)

@@ -129,7 +129,7 @@ def segment_contours(binary_image: np.ndarray, min_area: int = 20):
         return boxes
     hierarchy = hierarchy[0]
     for i, contour in enumerate(contours):
-        if hierarchy[i][3] != -1:  # skip holes, like the digit stroke inside a tile
+        if hierarchy[i][3] != -1:  # skip contours inside another contour (holes), like a digit stroke inside a dark tile
             continue
         boxes.append(cv2.boundingRect(contour))
     return boxes

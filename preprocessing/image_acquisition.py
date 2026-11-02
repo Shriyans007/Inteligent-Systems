@@ -17,10 +17,10 @@ def load_number_image(path: str) -> Image.Image:
     if not path.exists():
         raise FileNotFoundError(f"Cannot find image at {path}")
     with Image.open(path) as image:
-        # phone cameras often save photos sideways with a rotation tag instead
-        # of actually rotating the pixels, so apply that tag here
+        # Phone cameras often save photos sideways with a rotation tag instead
+        # of actually rotating the pixels, so apply that tag here.
         upright = ImageOps.exif_transpose(image)
-        # read the pixels now so the file isn't left open afterwards
+        # Read the pixels now so the file isn't left open afterwards.
         upright.load()
     return upright
 

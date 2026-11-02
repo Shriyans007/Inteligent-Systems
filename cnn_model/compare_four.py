@@ -20,7 +20,7 @@ def collect(baseline: Path, lenet: Path, resnet: Path):
         raise ValueError("Full-run comparison requires 60,000 train and 10,000 test samples")
     if new[0]["seed"] != new[1]["seed"] or new[0]["batch_size"] != new[1]["batch_size"]:
         raise ValueError("LeNet-5 and ResNet must use the same seed and batch size")
-    # The older comparison file doesn't record its run settings, so only its model names can be checked above.
+    # The older comparison file doesn't save its run settings, so the model names above are the only check for it.
     return old + new
 
 

@@ -31,8 +31,8 @@ def _blank_columns(tile: np.ndarray, from_left: bool) -> int:
 
 
 def _jitter_tiles(tiles, jitter: int, rng) -> list:
-    # real handwriting isn't evenly spaced or on a perfect line, so shift each
-    # digit up/down a bit and make each gap wider or tighter at random
+    # Real handwriting isn't evenly spaced or on a perfect line, so shift each
+    # digit up or down a bit and make each gap wider or tighter at random.
     shifted = []
     for tile in tiles:
         top = int(rng.integers(0, jitter + 1))
@@ -43,8 +43,8 @@ def _jitter_tiles(tiles, jitter: int, rng) -> list:
         if gap > 0:
             tiles[i] = np.pad(tiles[i], ((0, 0), (gap, 0)), constant_values=255)
         elif gap < 0:
-            # only trim blank columns, from both sides of the gap, so tight
-            # gaps can make digits touch without cutting any ink off
+            # Only trim blank columns, from both sides of the gap, so that tight gaps
+            # can make digits touch without cutting any ink off.
             trim_left = min(-gap, _blank_columns(tiles[i], from_left=True))
             tiles[i] = tiles[i][:, trim_left:]
             trim_right = min(-gap - trim_left, _blank_columns(tiles[i - 1], from_left=False))
@@ -55,7 +55,7 @@ def _jitter_tiles(tiles, jitter: int, rng) -> list:
 
 def make_number_image(digit_images, height: int = 56, spacing: int = 8, margin: int = 16,
                       jitter: int = 0, rng=None) -> Image.Image:
-    # flip to dark ink on white so it looks more like a real photo
+    # Flip to dark ink on white so it looks more like a real photo.
     tiles = [255 - np.asarray(digit, dtype=np.uint8) for digit in digit_images]
     if jitter:
         tiles = _jitter_tiles(tiles, jitter, rng or np.random.default_rng())
@@ -78,9 +78,9 @@ def build_benchmark_set(images, labels, output, counts=None, height: int = 56,
     image_dir = output / "images"
     image_dir.mkdir(parents=True, exist_ok=True)
 
-    # fixed seed so the same set comes out every time, each digit only used once
+    # Fixed seed so the same set comes out every time, and each digit is only used once.
     order = np.random.default_rng(seed).permutation(len(images))
-    # separate generator so jitter doesn't change which digits get picked
+    # A separate generator, so the jitter doesn't change which digits get picked.
     jitter_rng = np.random.default_rng(seed + 1)
     position = 0
     rows = []
@@ -124,7 +124,7 @@ def main() -> None:
 
     from cnn_model.models import _keras
 
-    # test split only, the models were trained on the training split
+    # Only the test split is used, since the models were trained on the training split.
     (_, _), (images, labels) = _keras().datasets.mnist.load_data()
     manifest = build_benchmark_set(images, labels, args.output, args.counts,
                                    height=args.height, spacing=args.spacing, seed=args.seed, jitter=args.jitter)

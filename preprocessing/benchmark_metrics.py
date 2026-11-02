@@ -23,7 +23,7 @@ FIELDS = ["model", "digits", "images", "exact_accuracy", "digit_accuracy", "char
 
 
 def edit_distance(expected: str, predicted: str) -> int:
-    # levenshtein distance, so one missing digit counts as one error not a whole wrong number
+    # Levenshtein distance, so one missing digit counts as one error and not a whole wrong number.
     previous = list(range(len(predicted) + 1))
     for i, expected_digit in enumerate(expected, start=1):
         current = [i]
@@ -38,10 +38,10 @@ def _metrics_for(cases) -> dict:
     total = len(cases)
     exact = sum(case["expected"] == case["predicted"] for case in cases)
     length_errors = sum(len(case["expected"]) != len(case["predicted"]) for case in cases)
-    # right digit count but still wrong means the classifier got a digit wrong
+    # Right digit count but still wrong means the classifier got a digit wrong.
     classifier_errors = total - exact - length_errors
 
-    # only count digits when the lengths match, otherwise they don't line up
+    # Only count digits when the lengths match, otherwise they don't line up.
     aligned = [case for case in cases if len(case["expected"]) == len(case["predicted"])]
     aligned_digits = sum(len(case["expected"]) for case in aligned)
     correct_digits = sum(e == p for case in aligned for e, p in zip(case["expected"], case["predicted"]))
@@ -161,7 +161,7 @@ def save_accuracy_plot(summaries: dict, path: Path) -> Path:
     ax.set_xticklabels([f"{length}-digit" for length in lengths])
     ax.set_ylabel("Whole number correct (%)")
     ax.set_title("Benchmark accuracy by number length")
-    # start a bit below the lowest bar so the differences are easy to see
+    # Start the y-axis a bit below the lowest bar so the differences are easy to see.
     lowest = min(s["by_length"][l]["exact_accuracy"] for s in summaries.values() for l in s["by_length"]) * 100
     ax.set_ylim(max(0, lowest - 15), 102)
     ax.legend()
@@ -192,7 +192,7 @@ def load_results(paths) -> dict:
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict) or "cases" not in data:
             raise ValueError(f"{path} has no 'cases', so it doesn't look like evaluate_uploads output")
-        # older results files don't record the model, so fall back to the file name
+        # Older results files don't record the model, so fall back to the file name.
         model = data.get("model") or path.stem
         results[model] = data["cases"]
     return results
@@ -208,7 +208,7 @@ def main() -> None:
     try:
         results = load_results(args.results)
     except (FileNotFoundError, ValueError) as error:
-        # print a short message instead of a full traceback
+        # Print a short message instead of a full traceback.
         raise SystemExit(f"Error: {error}")
     summaries = {model: summarise(cases) for model, cases in results.items()}
     shared = shared_segmentation_errors(results)
@@ -226,7 +226,7 @@ def main() -> None:
     if len(results) > 1:
         print(f"Wrong digit count for every model: {len(shared)} image(s)")
     print(f"Saved {json_path} and {csv_path}")
-    # handy for looking at the actual images that went wrong
+    # Save every wrong prediction to a CSV, which is handy for finding the actual images that went wrong.
     errors_path = save_errors(results, args.output / "benchmark_errors.csv")
     print(f"Saved {errors_path}")
     if args.plot:
